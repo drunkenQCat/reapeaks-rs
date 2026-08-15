@@ -42,6 +42,7 @@ jobs:
       - name: Set version from tag
         shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           import os, re, pathlib
           version = os.environ["GITHUB_REF_NAME"].lstrip("v")
@@ -80,6 +81,7 @@ jobs:
       - name: Set version from tag
         shell: bash
         run: |
+          set -euo pipefail
           python - <<'PY'
           import os, re, pathlib
           version = os.environ["GITHUB_REF_NAME"].lstrip("v")
@@ -106,6 +108,9 @@ jobs:
   publish:
     name: Publish to PyPI
     needs: [build-wheels, build-sdist]
+    # 显式保证：前置任意 build 失败或取消时跳过发布。
+    # 默认即 success() 语义，显式声明防止未来被改坏（如误加 always()）。
+    if: success()
     runs-on: ubuntu-latest
     environment: pypi
     permissions:

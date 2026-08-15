@@ -11,7 +11,6 @@ crate-type = ["cdylib", "rlib"]
 
 [features]
 default = []
-# PyO3 bindings（maturin 构建时开启：maturin build --features py）
 py = ["dep:pyo3"]
 
 [dependencies]
