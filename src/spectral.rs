@@ -80,28 +80,41 @@ impl SpectralLayer {
             }
             self.next_center += div;
         }
-        // 并行计算所有谱码（rayon 按峰切分，worker 复用 FFT scratch）
+        // 并行计算所有谱码（rayon 按峰切分，worker 复用 FFT scratch）。
+        // 窗口 buffer 用 thread_local 复用，避免每峰分配。
         if !windows.is_empty() {
             use rayon::prelude::*;
+            let block_ref: &[i16] = block;
+            let hist_ref: Option<&Vec<i16>> = self.hist.as_ref();
+            let channels = self.channels;
+            let sample_rate = self.sample_rate;
             let codes: Vec<i32> = windows
-                .par_iter()
-                .map(|&(center, c)| {
-                    let s0 = center.saturating_sub(HALF_FFT);
-                    let s1 = center + HALF_FFT;
-                    let mut win: Vec<i16> = Vec::with_capacity((s1 - s0) as usize);
-                    for abs in s0..s1 {
-                        let sample = if abs < block_start_frame {
-                            let idx = (abs - base) as usize;
-                            self.hist.as_ref().expect("hist 必存在")
-                                [idx * self.channels + c]
-                        } else {
-                            let idx = (abs - block_start_frame) as usize;
-                            block[idx * self.channels + c]
-                        };
-                        win.push(sample);
+                .par_chunks(64)
+                .flat_map_iter(|chunk| {
+                    thread_local! {
+                        static WIN: std::cell::RefCell<Vec<i16>> = const { std::cell::RefCell::new(Vec::new()) };
                     }
-                    let (freq, density) = freq_density(&win, self.sample_rate);
-                    ((density as i32) << 15) | freq as i32
+                    chunk.iter().map(move |&(center, c)| {
+                        let s0 = center.saturating_sub(HALF_FFT);
+                        let s1 = center + HALF_FFT;
+                        WIN.with(|cell| {
+                            let mut win = cell.borrow_mut();
+                            win.clear();
+                            win.reserve((s1 - s0) as usize);
+                            for abs in s0..s1 {
+                                let sample = if abs < block_start_frame {
+                                    let idx = (abs - base) as usize;
+                                    hist_ref.expect("hist 必存在")[idx * channels + c]
+                                } else {
+                                    let idx = (abs - block_start_frame) as usize;
+                                    block_ref[idx * channels + c]
+                                };
+                                win.push(sample);
+                            }
+                            let (freq, density) = freq_density(&win, sample_rate);
+                            ((density as i32) << 15) | freq as i32
+                        })
+                    })
                 })
                 .collect();
             self.out.extend_from_slice(&codes);
@@ -150,90 +163,113 @@ pub fn freq_density(window: &[i16], sample_rate: u32) -> (u16, u16) {
         return (0, 0);
     }
     let fftn = FFT_LEN;
-    let segf: Vec<f64> = window.iter().map(|&v| v as f64 / 32768.0).collect();
-    // 与 MAW 原始参考 _spec_buf 一致：总是加窗（窗长 = 有效段长），居中放置。
-    // B 版（python-ref）曾改成 n>=2048 不加窗，与原始参考不一致，已要求其修复回加窗。
-    let mut buf = vec![0.0f64; fftn];
-    let start = (fftn - n) / 2;
-    let end = (start + n).min(fftn);
-    let seg_len = end - start;
-    for (i, &v) in segf.iter().take(seg_len).enumerate() {
-        let w = if seg_len > 1 {
-            0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (seg_len - 1) as f64).cos()
-        } else {
-            1.0
-        };
-        buf[start + i] = v * w;
+    // thread_local 复用中间 buffer：segf、加窗 buf（real_fft 内还有自己的 scratch）
+    use std::cell::RefCell;
+    thread_local! {
+        static SEGF: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
+        static BUF: RefCell<Vec<f64>> = const { RefCell::new(Vec::new()) };
     }
-    // 2048 点实数 FFT → 幅值谱（丢弃 DC）
-    let mut spectrum = real_fft(&buf);
-    let ac: Vec<f64> = spectrum.drain(1..).collect();
-    if ac.is_empty() {
-        return (0, 0);
-    }
-    // argmax
-    let mut idx = 0usize;
-    let mut best = ac[0];
-    for (i, &v) in ac.iter().enumerate() {
-        if v > best {
-            best = v;
-            idx = i;
-        }
-    }
-    // 抛物线插值（ac 去掉 DC 后，bin 序号 = idx + 1）
-    let res = sample_rate as f64 / fftn as f64;
-    let freq = if idx == 0 || idx + 1 >= ac.len() {
-        0.0
-    } else {
-        let y0 = ac[idx - 1];
-        let y1 = ac[idx];
-        let y2 = ac[idx + 1];
-        let den = y0 - 2.0 * y1 + y2;
-        let delta = if den.abs() > 1e-12 {
-            0.5 * (y0 - y2) / den
-        } else {
-            0.0
-        };
-        (idx + 1) as f64 * res + delta * res
-    };
-    // density：谱平坦度
-    let sum: f64 = ac.iter().sum();
-    let density = if sum <= 0.0 {
-        0.0
-    } else {
-        let log_sum: f64 = ac.iter().map(|&v| v.max(1e-12).ln()).sum();
-        let geo = (log_sum / ac.len() as f64).exp();
-        let arith = sum / ac.len() as f64;
-        let flatness = if arith > 0.0 { geo / arith } else { 0.0 };
-        if flatness <= 0.0 {
-            0.0
-        } else {
-            (-2961.5 * flatness.ln() + 3995.3).clamp(1.0, 16383.0)
-        }
-    };
-    let freq = (freq.round() as u16).min(0x7FFF);
-    let density = (density.round() as u16).min(0x3FFF);
-    (freq, density)
+    SEGF.with(|cell| {
+        let mut segf = cell.borrow_mut();
+        segf.clear();
+        segf.extend(window.iter().map(|&v| v as f64 / 32768.0));
+        BUF.with(|bc| {
+            let mut buf = bc.borrow_mut();
+            buf.clear();
+            buf.resize(fftn, 0.0);
+            // 与 MAW 原始参考 _spec_buf 一致：总是加窗（窗长 = 有效段长），居中放置。
+            let start = (fftn - n) / 2;
+            let end = (start + n).min(fftn);
+            let seg_len = end - start;
+            for (i, &v) in segf.iter().take(seg_len).enumerate() {
+                let w = if seg_len > 1 {
+                    0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (seg_len - 1) as f64).cos()
+                } else {
+                    1.0
+                };
+                buf[start + i] = v * w;
+            }
+            // 2048 点实数 FFT → 幅值谱（丢弃 DC）
+            let mut spectrum = real_fft(&buf);
+            let ac: Vec<f64> = spectrum.drain(1..).collect();
+            if ac.is_empty() {
+                return (0, 0);
+            }
+            // argmax
+            let mut idx = 0usize;
+            let mut best = ac[0];
+            for (i, &v) in ac.iter().enumerate() {
+                if v > best {
+                    best = v;
+                    idx = i;
+                }
+            }
+            // 抛物线插值（ac 去掉 DC 后，bin 序号 = idx + 1）
+            let res = sample_rate as f64 / fftn as f64;
+            let freq = if idx == 0 || idx + 1 >= ac.len() {
+                0.0
+            } else {
+                let y0 = ac[idx - 1];
+                let y1 = ac[idx];
+                let y2 = ac[idx + 1];
+                let den = y0 - 2.0 * y1 + y2;
+                let delta = if den.abs() > 1e-12 {
+                    0.5 * (y0 - y2) / den
+                } else {
+                    0.0
+                };
+                (idx + 1) as f64 * res + delta * res
+            };
+            // density：谱平坦度
+            let sum: f64 = ac.iter().sum();
+            let density = if sum <= 0.0 {
+                0.0
+            } else {
+                let log_sum: f64 = ac.iter().map(|&v| v.max(1e-12).ln()).sum();
+                let geo = (log_sum / ac.len() as f64).exp();
+                let arith = sum / ac.len() as f64;
+                let flatness = if arith > 0.0 { geo / arith } else { 0.0 };
+                if flatness <= 0.0 {
+                    0.0
+                } else {
+                    (-2961.5 * flatness.ln() + 3995.3).clamp(1.0, 16383.0)
+                }
+            };
+            let freq = (freq.round() as u16).min(0x7FFF);
+            let density = (density.round() as u16).min(0x3FFF);
+            (freq, density)
+        })
+    })
 }
 
 /// 2048 点实数 FFT 的幅值谱（丢弃相位），realfft 实现。
 ///
-/// FFT plan 用进程级 `OnceLock` 缓存：`RealFftPlanner::plan_fft_forward`
-/// 返回 `Arc<dyn RealToComplex>`（`process` 只取 `&self`，可跨 rayon worker 共享），
-/// 每个调用只分配独立的输入/输出 buffer。
+/// FFT plan 用进程级 `OnceLock` 缓存（`process` 只取 `&self`，跨 worker 共享）；
+/// 输入/输出 buffer 用 thread_local 复用，避免热路径反复分配。
 fn real_fft(input: &[f64]) -> Vec<f64> {
     use realfft::{RealFftPlanner, RealToComplex};
+    use std::cell::RefCell;
     use std::sync::{Arc, OnceLock};
 
     static R2C: OnceLock<Arc<dyn RealToComplex<f64>>> = OnceLock::new();
+    thread_local! {
+        static SCRATCH: RefCell<(Vec<f64>, Vec<realfft::num_complex::Complex<f64>>)> =
+            RefCell::new((Vec::new(), Vec::new()));
+    }
     let r2c = R2C.get_or_init(|| {
         let mut planner = RealFftPlanner::<f64>::new();
         planner.plan_fft_forward(FFT_LEN)
     });
-    let mut indata = input.to_vec();
-    let mut spectrum = r2c.make_output_vec();
-    r2c.process(&mut indata, &mut spectrum).expect("FFT 失败");
-    spectrum.iter().map(|c| c.norm()).collect()
+    SCRATCH.with(|cell| {
+        let (indata, spectrum) = &mut *cell.borrow_mut();
+        indata.clear();
+        indata.extend_from_slice(input);
+        if spectrum.len() != FFT_LEN / 2 + 1 {
+            *spectrum = r2c.make_output_vec();
+        }
+        r2c.process(indata, spectrum).expect("FFT 失败");
+        spectrum.iter().map(|c| c.norm()).collect()
+    })
 }
 
 #[cfg(test)]
