@@ -55,8 +55,7 @@ impl WaveLayer {
         if self.acc_count > 0 {
             let take = ((self.div - self.acc_count) as usize).min(n);
             for frame in block[..take * self.channels].chunks_exact(self.channels) {
-                for c in 0..self.channels {
-                    let v = frame[c];
+                for (c, &v) in frame.iter().enumerate() {
                     if v > self.acc_max[c] {
                         self.acc_max[c] = v;
                     }
@@ -115,8 +114,7 @@ impl WaveLayer {
             self.acc_min.fill(i16::MAX);
             self.acc_count = (tail.len() / self.channels) as u32;
             for frame in tail.chunks_exact(self.channels) {
-                for c in 0..self.channels {
-                    let v = frame[c];
+                for (c, &v) in frame.iter().enumerate() {
                     if v > self.acc_max[c] {
                         self.acc_max[c] = v;
                     }
@@ -225,7 +223,9 @@ mod tests {
         let mut i = 0;
         let mut rng = 12345u64;
         while i < data.len() {
-            rng = rng.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            rng = rng
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
             let take = ((rng >> 33) as usize % 37) + 1;
             let take = take.min(data.len() - i);
             split.feed(&data[i..i + take]);

@@ -107,7 +107,7 @@ impl ReapeaksStreamer {
         let frame_bytes = self.channels * 2;
 
         // 快路径：无 carry 且数据为整帧 —— 优先零拷贝，否则拷贝进局部 scratch。
-        if self.carry.is_empty() && data.len() % frame_bytes == 0 {
+        if self.carry.is_empty() && data.len().is_multiple_of(frame_bytes) {
             if let Some(frames) = try_zero_copy_i16(data) {
                 let n_frames = (frames.len() / self.channels) as u64;
                 self.feed_layers(frames, block_start_frame);
@@ -179,11 +179,11 @@ impl ReapeaksStreamer {
             {
                 let layer = &mut self.loudness_layers[0];
                 layer.finish();
-                let npeak1 = (self.total_frames + div1 as u64 - 1) / div1 as u64 + 1;
+                let npeak1 = self.total_frames.div_ceil(div1 as u64) + 1;
                 let mut data = layer.bytes();
                 let limit = npeak1 as usize * self.channels * 4;
                 if data.len() < limit {
-                    data.extend(std::iter::repeat(0u8).take(limit - data.len()));
+                    data.extend(std::iter::repeat_n(0u8, limit - data.len()));
                 } else {
                     data.truncate(limit);
                 }
@@ -210,7 +210,7 @@ impl ReapeaksStreamer {
             // 未启用时用等效峰数 ceil(total/fine_div)（与参考 _finest_npeak 一致）
             let fine_npeak = match self.wave_layers.first() {
                 Some(w) => w.peak_count() as i64,
-                None => ((self.total_frames + fine_div as u64 - 1) / fine_div as u64) as i64,
+                None => self.total_frames.div_ceil(fine_div as u64) as i64,
             };
             let c_total = fine_div * fine_npeak - 1280;
             for layer in &mut self.spectral_layers {
@@ -323,8 +323,7 @@ mod tests {
         for i in 0..frames {
             for c in 0..ch {
                 let v = (16000.0
-                    * (2.0 * std::f64::consts::PI * freq * (i as f64) / sr as f64
-                        + c as f64 * 1.7)
+                    * (2.0 * std::f64::consts::PI * freq * (i as f64) / sr as f64 + c as f64 * 1.7)
                         .sin()) as i16;
                 out.extend_from_slice(&v.to_le_bytes());
             }
@@ -347,12 +346,20 @@ mod tests {
     fn chunk_split_invariance_random_sizes() {
         let sr = 44100u32;
         let data = pcm_sine(sr, 2, 30000, 440.0);
-        let mut one =
-            make_streamer(sr, 2, &[Feature::Wave, Feature::Spectral, Feature::Loudness], 3);
+        let mut one = make_streamer(
+            sr,
+            2,
+            &[Feature::Wave, Feature::Spectral, Feature::Loudness],
+            3,
+        );
         one.feed(&data).unwrap();
         let one_bytes = one.finish(0, 0);
-        let mut split =
-            make_streamer(sr, 2, &[Feature::Wave, Feature::Spectral, Feature::Loudness], 3);
+        let mut split = make_streamer(
+            sr,
+            2,
+            &[Feature::Wave, Feature::Spectral, Feature::Loudness],
+            3,
+        );
         // 随机分块（下限 4096 帧 = 8192 字节：spectral 窗口需要块 >= 2048 帧，
         // 与 Python 参考 64KB 块的语义一致；奇数字节 carry 由 odd_byte 测试单独覆盖）
         let mut i = 0usize;

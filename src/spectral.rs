@@ -221,7 +221,8 @@ pub fn freq_density(window: &[i16], sample_rate: u32) -> (u16, u16) {
             } else {
                 for (i, &v) in segf.iter().take(seg_len).enumerate() {
                     let w = if seg_len > 1 {
-                        0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (seg_len - 1) as f64).cos()
+                        0.5 - 0.5
+                            * (2.0 * std::f64::consts::PI * i as f64 / (seg_len - 1) as f64).cos()
                     } else {
                         1.0
                     };
@@ -296,7 +297,7 @@ fn real_fft(input: &[f64], out: &mut Vec<f64>) {
     static R2C: OnceLock<Arc<dyn RealToComplex<f64>>> = OnceLock::new();
     thread_local! {
         static SCRATCH: RefCell<(Vec<f64>, Vec<realfft::num_complex::Complex<f64>>)> =
-            RefCell::new((Vec::new(), Vec::new()));
+            const { RefCell::new((Vec::new(), Vec::new())) };
     }
     let r2c = R2C.get_or_init(|| {
         let mut planner = RealFftPlanner::<f64>::new();

@@ -51,9 +51,8 @@ impl LoudnessLayer {
         if self.acc_count > 0 {
             let take = ((self.div - self.acc_count) as usize).min(n);
             for frame in block[..take * self.channels].chunks_exact(self.channels) {
-                for c in 0..self.channels {
-                    let v = frame[c] as i64;
-                    self.acc_sq[c] += v * v;
+                for (c, &v) in frame.iter().enumerate() {
+                    self.acc_sq[c] += (v as i64) * (v as i64);
                 }
             }
             self.acc_count += take as u32;
@@ -80,8 +79,8 @@ impl LoudnessLayer {
                         sqsum[c] += v * v;
                     }
                 }
-                for c in 0..self.channels {
-                    let rms = (sqsum[c] as f64 / div as f64).sqrt() / 32768.0;
+                for &sq in &sqsum {
+                    let rms = (sq as f64 / div as f64).sqrt() / 32768.0;
                     self.out.push(rms as f32);
                 }
             }
@@ -91,9 +90,8 @@ impl LoudnessLayer {
             self.acc_sq.fill(0);
             self.acc_count = (tail.len() / self.channels) as u32;
             for frame in tail.chunks_exact(self.channels) {
-                for c in 0..self.channels {
-                    let v = frame[c] as i64;
-                    self.acc_sq[c] += v * v;
+                for (c, &v) in frame.iter().enumerate() {
+                    self.acc_sq[c] += (v as i64) * (v as i64);
                 }
             }
         }
@@ -158,7 +156,12 @@ mod tests {
         layer.feed(&[i16::MAX, i16::MAX, i16::MIN, i16::MIN]);
         layer.finish();
         // (32767^2 + 32767^2 + 32768^2 + 32768^2)/4 开方 /32768 ≈ 0.9999695
-        let rms = f32::from_le_bytes([layer.bytes()[0], layer.bytes()[1], layer.bytes()[2], layer.bytes()[3]]);
+        let rms = f32::from_le_bytes([
+            layer.bytes()[0],
+            layer.bytes()[1],
+            layer.bytes()[2],
+            layer.bytes()[3],
+        ]);
         assert!((rms - 0.9999695).abs() < 1e-4, "rms={rms}");
     }
 
@@ -202,9 +205,7 @@ mod tests {
 
     #[test]
     fn chunk_splitting_invariance() {
-        let data: Vec<i16> = (0..500)
-            .map(|i| (((i * 37) % 200) as i16) - 100)
-            .collect();
+        let data: Vec<i16> = (0..500).map(|i| (((i * 37) % 200) as i16) - 100).collect();
         let mut one = LoudnessLayer::new(7, 2);
         // 构造双声道交错数据
         let mut interleaved = Vec::with_capacity(data.len() * 2);

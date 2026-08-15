@@ -107,7 +107,7 @@ impl StreamerOptions {
             Some(d) => d,
             None => choose_division_factors(sample_rate),
         };
-        if divs.iter().any(|&d| d == 0) {
+        if divs.contains(&0) {
             return Err(OptionsError::InvalidDiv(0));
         }
         // 去重并保持 Feature::ALL 顺序；空输入按默认 wave 处理，
@@ -174,11 +174,19 @@ mod tests {
             44100,
             2,
             None,
-            Some(vec![Feature::Loudness, Feature::Wave, Feature::Spectral, Feature::Wave]),
+            Some(vec![
+                Feature::Loudness,
+                Feature::Wave,
+                Feature::Spectral,
+                Feature::Wave,
+            ]),
             1,
         )
         .unwrap();
-        assert_eq!(opts.features, vec![Feature::Wave, Feature::Spectral, Feature::Loudness]);
+        assert_eq!(
+            opts.features,
+            vec![Feature::Wave, Feature::Spectral, Feature::Loudness]
+        );
         // None → 默认仅 wave
         let opts = StreamerOptions::new(44100, 2, None, None, 1).unwrap();
         assert_eq!(opts.features, vec![Feature::Wave]);

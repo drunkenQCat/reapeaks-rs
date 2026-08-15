@@ -26,8 +26,7 @@ fn parse_features(features: Option<Vec<String>>) -> PyResult<Vec<Feature>> {
     features
         .iter()
         .map(|name| {
-            Feature::parse(name)
-                .ok_or_else(|| PyValueError::new_err(format!("未知特性名: {name}")))
+            Feature::parse(name).ok_or_else(|| PyValueError::new_err(format!("未知特性名: {name}")))
         })
         .collect()
 }
@@ -59,8 +58,9 @@ impl ReapeaksStreamer {
         mipmap_levels: usize,
     ) -> PyResult<Self> {
         let features = parse_features(features)?;
-        let options = StreamerOptions::new(sample_rate, channels, divs, Some(features), mipmap_levels)
-            .map_err(to_py_err)?;
+        let options =
+            StreamerOptions::new(sample_rate, channels, divs, Some(features), mipmap_levels)
+                .map_err(to_py_err)?;
         let inner = CoreStreamer::new(sample_rate, channels, options).map_err(to_py_err)?;
         Ok(ReapeaksStreamer { inner })
     }
@@ -75,7 +75,12 @@ impl ReapeaksStreamer {
 
     /// 冲刷并返回完整 `.ReaPeaks` 字节。
     #[pyo3(signature = (src_timestamp=0, src_filesize=0))]
-    fn finish(&mut self, py: Python<'_>, src_timestamp: i32, src_filesize: i32) -> PyResult<Py<PyBytes>> {
+    fn finish(
+        &mut self,
+        py: Python<'_>,
+        src_timestamp: i32,
+        src_filesize: i32,
+    ) -> PyResult<Py<PyBytes>> {
         let inner = &mut self.inner;
         let bytes = py.detach(move || inner.finish(src_timestamp, src_filesize));
         Python::attach(|py| Ok(PyBytes::new(py, &bytes).unbind()))
