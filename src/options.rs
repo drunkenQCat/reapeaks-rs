@@ -38,7 +38,7 @@ impl Feature {
 }
 
 /// 流式生成选项。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamerOptions {
     /// wave 层 division factors，升序（最细在前）。spectral 层镜像同一组 divs。
     pub divs: Vec<u32>,
@@ -157,27 +157,66 @@ impl StreamerOptions {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn default_divs_are_fine_mid_coarse() {
-        todo!()
+        let divs = choose_division_factors(44100);
+        assert_eq!(divs, vec![147, 2205, 44100]);
+        // 低频采样率下 div 至少为 1
+        let divs = choose_division_factors(100);
+        assert_eq!(divs, vec![1, 5, 100]);
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn features_dedup_and_order_follows_all() {
-        todo!()
+        let opts = StreamerOptions::new(
+            44100,
+            2,
+            None,
+            Some(vec![Feature::Loudness, Feature::Wave, Feature::Spectral, Feature::Wave]),
+            1,
+        )
+        .unwrap();
+        assert_eq!(opts.features, vec![Feature::Wave, Feature::Spectral, Feature::Loudness]);
+        // None → 默认仅 wave
+        let opts = StreamerOptions::new(44100, 2, None, None, 1).unwrap();
+        assert_eq!(opts.features, vec![Feature::Wave]);
+        assert!(opts.is_enabled(Feature::Wave));
+        assert!(!opts.is_enabled(Feature::Spectral));
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn invalid_channels_and_divs_rejected() {
-        todo!()
+        assert_eq!(
+            StreamerOptions::new(44100, 0, None, None, 1),
+            Err(OptionsError::InvalidChannels(0))
+        );
+        assert_eq!(
+            StreamerOptions::new(44100, 2, Some(vec![0, 147]), None, 1),
+            Err(OptionsError::InvalidDiv(0))
+        );
+        assert_eq!(
+            StreamerOptions::new(44100, 2, Some(vec![]), None, 1),
+            Err(OptionsError::InvalidDiv(0))
+        );
+        assert_eq!(
+            StreamerOptions::new(44100, 2, None, Some(vec![]), 1),
+            Err(OptionsError::EmptyFeatures)
+        );
+        assert_eq!(
+            StreamerOptions::new(44100, 2, None, None, 0),
+            Err(OptionsError::EmptyMipmapLevels)
+        );
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn mipmap_levels_truncates_divs() {
-        todo!()
+        let opts = StreamerOptions::new(44100, 2, Some(vec![10, 20, 30]), None, 2).unwrap();
+        assert_eq!(opts.wave_divs(), &[10, 20]);
+        assert_eq!(opts.layer_count(), 2);
+        // levels 超过 divs 数量时截断到全部
+        let opts = StreamerOptions::new(44100, 2, Some(vec![10, 20]), None, 5).unwrap();
+        assert_eq!(opts.wave_divs(), &[10, 20]);
     }
 }
