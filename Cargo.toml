@@ -1,6 +1,6 @@
 [package]
 name = "reapeaks"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.83"
 description = "REAPER .ReaPeaks generator: streaming wave/spectral/loudness mipmaps, PyO3 bindings"
