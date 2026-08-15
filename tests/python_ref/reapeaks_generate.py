@@ -257,7 +257,6 @@ class ReapeaksStreamer:
             center = self._spec_next[li]
             out = self._spec_out[li]
             codes: list[int] = []
-            chunk_start = len(out)
             while center + HALF_FFT <= total_after:
                 s0 = max(0, center - HALF_FFT)
                 win = stream[s0 - base: center + HALF_FFT - base]
@@ -267,7 +266,11 @@ class ReapeaksStreamer:
             self._spec_next[li] = center
             if codes:
                 out += np.array(codes, dtype="<i4").tobytes()
-        self._hist = block[-FFT_SIZE:].copy()
+        # 保留"全局最后 2048 帧"（跨块累积），使窗口内容与分块方式无关。
+        if hist is None:
+            self._hist = block[-FFT_SIZE:].copy()
+        else:
+            self._hist = np.concatenate([hist, block])[-FFT_SIZE:].copy()
 
     # ---------------- loudness ----------------
 

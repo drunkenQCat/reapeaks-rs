@@ -29,14 +29,14 @@ def make_pcm(sr, ch, n, seed):
 def gen_orig(pcm, sr, ch, divs=None):
     s = orig._ReaPeaksStreamer(sr, ch, divs=divs)
     for i in range(0, len(pcm), 7776):
-        s.feed(pcm[i:i + 7777])
+        s.feed(pcm[i:i + 7776])
     return s.finish()
 
 
 def gen_new(pcm, sr, ch, divs=None, features=("wave", "spectral", "loudness"), levels=3):
     s = new.ReapeaksStreamer(sr, ch, divs=divs, features=features, mipmap_levels=levels)
     for i in range(0, len(pcm), 3334):
-        s.feed(pcm[i:i + 3333])
+        s.feed(pcm[i:i + 3334])
     return s.finish()
 
 
