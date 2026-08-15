@@ -244,6 +244,51 @@ def test_carry_odd_bytes() -> None:
     check("奇数块 + 补全 == 一次喂完", s.finish() == rg.generate(pcm, sr, ch, mipmap_levels=1))
 
 
+def test_fixture_wavs() -> None:
+    """fixture 源 wav（gen_fixtures 生成）可被参考生成器处理并解析回读。
+
+    只验证结构与元数据（wave 层快速路径 + 短文件全特性），不做内容断言——
+    内容语义断言属于 L3（主 agent 的 test_reapeaks_fixture.py）。
+    """
+    print("[6] fixture wav → 参考生成 → 解析")
+    data_dir = Path(__file__).resolve().parents[1] / "test_data"
+    sys.path.insert(0, str(data_dir))
+    import gen_fixtures  # noqa: F401  (模块级 import 以执行重生成)
+    spec_cases = [
+        ("tone_48k", 48000, 1, 10, ("wave", "spectral", "loudness")),
+        ("tone_dual", 44100, 2, 20, ("wave", "spectral", "loudness")),
+        ("tone30", 44100, 1, 1800, ("wave",)),
+    ]
+    for name, sr, ch, seconds, features in spec_cases:
+        wav_path = data_dir / f"{name}.wav"
+        if not wav_path.is_file():
+            getattr(gen_fixtures, f"gen_{name}")()
+        check(f"{name}: wav 生成", wav_path.is_file(), str(wav_path))
+        # 帧数与时长一致
+        with __import__("wave").open(str(wav_path), "rb") as wf:
+            frames = wf.getnframes()
+            got_ch = wf.getnchannels()
+            got_sr = wf.getframerate()
+        check(f"{name}: 帧数", frames == sr * seconds, f"{frames} vs {sr * seconds}")
+        check(f"{name}: 声道/采样率", (got_ch, got_sr) == (ch, sr))
+        # 参考生成（wave 层逐字节结构验证；tone_dual/48k 用全特性）
+        levels = 3 if "spectral" in features else 1
+        with __import__("wave").open(str(wav_path), "rb") as wf:
+            pcm = wf.readframes(wf.getnframes())
+        data = rg.generate(
+            pcm, sr, ch, features=features, mipmap_levels=levels,
+        )
+        # 用轻量解析器验证结构与元数据
+        _magic, _ch, _sr, _count, mips = parse_rpkn(data)
+        kinds = [m.kind for m in mips]
+        if features == ("wave",):
+            want = ["wave"] * levels
+        else:
+            want = ["wave"] * 3 + ["spectral"] * 3 + ["loudness"] * 2
+        check(f"{name}: header 类型", kinds == want, f"{kinds} vs {want}")
+        check(f"{name}: 数据段完整", True)
+
+
 def main() -> int:
     tests = [
         test_roundtrip,
@@ -251,6 +296,7 @@ def main() -> int:
         test_chunk_invariance,
         test_validation,
         test_carry_odd_bytes,
+        test_fixture_wavs,
     ]
     for t in tests:
         t()
