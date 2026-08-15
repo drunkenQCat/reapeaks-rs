@@ -96,6 +96,9 @@ impl ReapeaksStreamer {
 
     /// 消费一个字节块（s16le 交错）。可任意分块；尾部非整帧字节
     /// carry 到下一次 `feed`。`finish()` 之后调用返回 `StreamerError`。
+    // `is_multiple_of` 需 Rust 1.87，而本 crate 对齐 pyo3 0.29 的 MSRV 1.83，
+    // 故保留 `% == 0` 并抑制该 lint。
+    #[allow(clippy::manual_is_multiple_of)]
     pub fn feed(&mut self, data: &[u8]) -> Result<(), StreamerError> {
         if self.finished {
             return Err(StreamerError::FeedAfterFinish);
@@ -107,7 +110,7 @@ impl ReapeaksStreamer {
         let frame_bytes = self.channels * 2;
 
         // 快路径：无 carry 且数据为整帧 —— 优先零拷贝，否则拷贝进局部 scratch。
-        if self.carry.is_empty() && data.len().is_multiple_of(frame_bytes) {
+        if self.carry.is_empty() && data.len() % frame_bytes == 0 {
             if let Some(frames) = try_zero_copy_i16(data) {
                 let n_frames = (frames.len() / self.channels) as u64;
                 self.feed_layers(frames, block_start_frame);
