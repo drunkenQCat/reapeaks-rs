@@ -1,5 +1,5 @@
 [package]
-name = "reapeaks-rust"
+name = "reapeaks"
 version = "0.1.0"
 edition = "2021"
 description = "REAPER .ReaPeaks generator: streaming wave/spectral/loudness mipmaps, PyO3 bindings"

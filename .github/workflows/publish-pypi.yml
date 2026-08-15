@@ -2,7 +2,7 @@
 # Python 包发布 — 当推送 v* tag 时自动构建多平台 wheel 并发布到 PyPI
 # 使用 OIDC Trusted Publisher（无需 PYPI_TOKEN secret）
 # 需在 PyPI 项目设置中添加 Trusted Publisher:
-#   https://pypi.org/manage/project/reapeaks-rs/settings/publishing/
+#   https://pypi.org/manage/project/reapeaks/settings/publishing/
 #   GitHub org: drunkenQCat, repo: reapeaks-rs, workflow: publish-pypi.yml, env: pypi
 
 name: Publish PyPI
@@ -129,7 +129,7 @@ jobs:
 
       # OIDC authentication — no token needed
       # PyPI Trusted Publisher must be configured:
-      # https://pypi.org/manage/project/reapeaks-rs/settings/publishing/
+      # https://pypi.org/manage/project/reapeaks/settings/publishing/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
@@ -141,12 +141,12 @@ jobs:
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
           echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
-          echo "| **Package** | reapeaks-rust |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package** | reapeaks |" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Platforms** | Windows, Linux, macOS |" >> $GITHUB_STEP_SUMMARY
           echo "| **Python** | 3.10–3.13 |" >> $GITHUB_STEP_SUMMARY
           echo "| **Auth** | OIDC Trusted Publisher |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "```" >> $GITHUB_STEP_SUMMARY
-          echo "pip install reapeaks-rust==${GITHUB_REF_NAME#v}" >> $GITHUB_STEP_SUMMARY
+          echo "pip install reapeaks==${GITHUB_REF_NAME#v}" >> $GITHUB_STEP_SUMMARY
           echo "```" >> $GITHUB_STEP_SUMMARY
