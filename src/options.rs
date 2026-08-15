@@ -38,7 +38,7 @@ impl Feature {
 }
 
 /// 流式生成选项。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct StreamerOptions {
     /// wave 层 division factors，升序（最细在前）。spectral 层镜像同一组 divs。
     pub divs: Vec<u32>,

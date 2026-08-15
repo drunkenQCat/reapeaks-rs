@@ -11,6 +11,8 @@
 
 /// 频谱窗口半宽（2048 / 2）。
 pub const HALF_FFT: u64 = 1024;
+/// FFT 长度（2048）。
+pub const FFT_LEN: usize = 2048;
 
 /// 单层 spectral 累加器（无 pyo3 依赖）。
 #[derive(Debug)]
@@ -26,80 +28,280 @@ pub struct SpectralLayer {
     out: Vec<i32>,
 }
 
-/// 每层桶中心与输出（每峰每声道一个 i32 码）。
 impl SpectralLayer {
     /// `div`：本层 division factor；`channels`：声道数；`sample_rate`：源采样率。
     pub fn new(div: u32, channels: usize, sample_rate: u32) -> Self {
-        todo!()
+        assert!(div > 0, "div 必须 >= 1");
+        assert!(channels >= 1, "channels 必须 >= 1");
+        SpectralLayer {
+            div,
+            channels,
+            sample_rate,
+            next_center: 0,
+            hist: None,
+            out: Vec::new(),
+        }
     }
 
     /// 本层 division factor。
     pub fn div(&self) -> u32 {
-        todo!()
+        self.div
     }
 
     /// 消费一块**完整帧**的交错 i16 样本；`block_start_frame` 为该块第一帧的
     /// 绝对位置（用于中心判定）。不变量：`block.len() % channels == 0`。
     pub fn feed(&mut self, block: &[i16], block_start_frame: u64) {
-        todo!()
+        debug_assert_eq!(block.len() % self.channels, 0);
+        let n_frames = (block.len() / self.channels) as u64;
+        if n_frames == 0 {
+            return;
+        }
+        // 可见样本流：hist（若有）+ block，绝对坐标 [base, total_after)
+        let hist_frames = self.hist.as_ref().map_or(0, |h| h.len() / self.channels) as u64;
+        let base = block_start_frame.saturating_sub(hist_frames);
+        let total_after = block_start_frame + n_frames;
+
+        let div = self.div as u64;
+        // 处理所有满足 center + HALF_FFT <= total_after 的中心
+        while self.next_center + HALF_FFT <= total_after {
+            let center = self.next_center;
+            // 与参考一致：s0 = max(0, center - 1024)，文件开头的窗口不足 2048 长
+            let s0 = center.saturating_sub(HALF_FFT);
+            let s1 = center + HALF_FFT;
+            // s1 <= total_after 由 while 保证；s0 >= base 由 base=start(含 hist) 保证
+            if s0 < base {
+                // 窗口起点超出可见历史（理论上不应发生：hist 始终保留最近 2048 帧，
+                // 而 s0 = center - 1024 >= next_center 前沿 - 1024；防御性跳过）
+                self.next_center += div;
+                continue;
+            }
+            for c in 0..self.channels {
+                let mut win: Vec<i16> = Vec::with_capacity((s1 - s0) as usize);
+                for abs in s0..s1 {
+                    let sample = if abs < block_start_frame {
+                        let idx = (abs - base) as usize;
+                        self.hist.as_ref().expect("hist 必存在")
+                            [idx * self.channels + c]
+                    } else {
+                        let idx = (abs - block_start_frame) as usize;
+                        block[idx * self.channels + c]
+                    };
+                    win.push(sample);
+                }
+                let (freq, density) = freq_density(&win, self.sample_rate);
+                let code = ((density as i32) << 15) | freq as i32;
+                self.out.push(code);
+            }
+            self.next_center += div;
+        }
+        // 更新 hist：保留可见流（hist+block）的尾部至多 2048 帧。
+        // 比参考实现（仅取 block 尾部）更健壮：即使连续小块（<2048 帧），
+        // hist 也始终是"最近 2048 帧"，保证下一块的 base 不回落。
+        let mut stream: Vec<i16> = Vec::with_capacity(FFT_LEN * self.channels);
+        if let Some(h) = &self.hist {
+            stream.extend_from_slice(h);
+        }
+        stream.extend_from_slice(block);
+        let keep = stream.len().min(FFT_LEN * self.channels);
+        self.hist = Some(stream[stream.len() - keep..].to_vec());
     }
 
     /// 结束输入（无额外冲刷语义；truncation 由 streamer 统一执行）。
     pub fn finish(&mut self) {
-        todo!()
+        // 无操作：谱峰只在天花板满足时输出；truncation 在 streamer.finish 做
     }
 
     /// 已输出峰值数。
     pub fn peak_count(&self) -> usize {
-        todo!()
+        self.out.len() / self.channels
     }
 
     /// 输出本层频谱码字节（i32 小端）。
     pub fn bytes(&self) -> Vec<u8> {
-        todo!()
+        let mut out = Vec::with_capacity(self.out.len() * 4);
+        for &v in &self.out {
+            out.extend_from_slice(&v.to_le_bytes());
+        }
+        out
     }
 }
 
 /// 由一段 2048 样本窗口（每声道）计算 `(freq_hz, density)`。
 ///
-/// 与 `/home/deck/MyCode/reapeaks-rs/reapeaks-knowledge/reapeaks_generate.py`
-/// 的 `_freq_density` / `_spectral_code` 数学等价（±1 取整容差内）：
+/// 与 Python 参考 `_freq_density` / `_spectral_code` 数学等价（±1 取整容差内）：
 /// - 计算 f64 频谱，丢弃 DC
 /// - freq = argmax + 抛物线插值（采样率/2048 分辨率）
 /// - density = −2961.5 * ln(flatness) + 3995.3，截断到 [1, 16383]
 pub fn freq_density(window: &[i16], sample_rate: u32) -> (u16, u16) {
-    todo!()
+    let n = window.len();
+    if n < 8 {
+        return (0, 0);
+    }
+    let fftn = FFT_LEN;
+    let segf: Vec<f64> = window.iter().map(|&v| v as f64 / 32768.0).collect();
+    // 与参考 _spec_buffer 一致：
+    // - n >= 2048：不加窗，直接截断到 2048
+    // - n < 2048：居中放置 + Hanning 加窗（窗长 = 窗口长度），其余零填充
+    let buf = if n >= fftn {
+        let mut b = vec![0.0f64; fftn];
+        b[..fftn].copy_from_slice(&segf[..fftn]);
+        b
+    } else {
+        let mut b = vec![0.0f64; fftn];
+        let start = (fftn - n) / 2;
+        for (i, &v) in segf.iter().enumerate() {
+            let w = if n > 1 {
+                0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (n - 1) as f64).cos()
+            } else {
+                1.0
+            };
+            b[start + i] = v * w;
+        }
+        b
+    };
+    // 2048 点实数 FFT → 幅值谱（丢弃 DC）
+    let mut spectrum = real_fft(&buf);
+    let ac: Vec<f64> = spectrum.drain(1..).collect();
+    if ac.is_empty() {
+        return (0, 0);
+    }
+    // argmax
+    let mut idx = 0usize;
+    let mut best = ac[0];
+    for (i, &v) in ac.iter().enumerate() {
+        if v > best {
+            best = v;
+            idx = i;
+        }
+    }
+    // 抛物线插值（ac 去掉 DC 后，bin 序号 = idx + 1）
+    let res = sample_rate as f64 / fftn as f64;
+    let freq = if idx == 0 || idx + 1 >= ac.len() {
+        0.0
+    } else {
+        let y0 = ac[idx - 1];
+        let y1 = ac[idx];
+        let y2 = ac[idx + 1];
+        let den = y0 - 2.0 * y1 + y2;
+        let delta = if den.abs() > 1e-12 {
+            0.5 * (y0 - y2) / den
+        } else {
+            0.0
+        };
+        (idx + 1) as f64 * res + delta * res
+    };
+    // density：谱平坦度
+    let sum: f64 = ac.iter().sum();
+    let density = if sum <= 0.0 {
+        0.0
+    } else {
+        let log_sum: f64 = ac.iter().map(|&v| v.max(1e-12).ln()).sum();
+        let geo = (log_sum / ac.len() as f64).exp();
+        let arith = sum / ac.len() as f64;
+        let flatness = if arith > 0.0 { geo / arith } else { 0.0 };
+        if flatness <= 0.0 {
+            0.0
+        } else {
+            (-2961.5 * flatness.ln() + 3995.3).clamp(1.0, 16383.0)
+        }
+    };
+    let freq = (freq.round() as u16).min(0x7FFF);
+    let density = (density.round() as u16).min(0x3FFF);
+    (freq, density)
+}
+
+/// 2048 点实数 FFT 的幅值谱（丢弃相位），realfft 实现。
+fn real_fft(input: &[f64]) -> Vec<f64> {
+    use realfft::RealFftPlanner;
+    let mut planner = RealFftPlanner::<f64>::new();
+    let r2c = planner.plan_fft_forward(FFT_LEN);
+    let mut indata = input.to_vec();
+    let mut spectrum = r2c.make_output_vec();
+    r2c.process(&mut indata, &mut spectrum).expect("FFT 失败");
+    spectrum.iter().map(|c| c.norm()).collect()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn tone_win(freq: f64, sr: u32, amp: f64) -> Vec<i16> {
+        (0..FFT_LEN)
+            .map(|i| {
+                (amp * 32767.0 * (2.0 * std::f64::consts::PI * freq * i as f64 / sr as f64).sin())
+                    as i16
+            })
+            .collect()
+    }
+
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn freq_density_of_300hz_tone() {
-        todo!()
+        let (freq, density) = freq_density(&tone_win(300.0, 44100, 0.9), 44100);
+        assert!((freq as i32 - 300).abs() < 10, "freq={freq}");
+        // 参考语义：n>=2048 不加窗（矩形窗泄漏），纯音 density 仍应显著高于噪声
+        assert!(density > 5000, "纯音 density 应较高, got {density}");
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn silence_gives_zero_code() {
-        todo!()
+        let win = vec![0i16; FFT_LEN];
+        let (freq, density) = freq_density(&win, 44100);
+        assert_eq!((freq, density), (0, 0));
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn chunk_split_invariance_with_hist_carry() {
-        todo!()
+        let sr = 44100u32;
+        let ch = 1usize;
+        let n = 20000usize;
+        let signal: Vec<i16> = (0..n)
+            .map(|i| {
+                (20000.0 * (2.0 * std::f64::consts::PI * 440.0 * i as f64 / sr as f64).sin()) as i16
+            })
+            .collect();
+        let mut one = SpectralLayer::new(147, ch, sr);
+        one.feed(&signal, 0);
+        one.finish();
+        // 真实场景块大小（>= 2048 帧，保证窗口样本总在 hist+block 内，
+        // 与 Python 参考 64KB 块的语义一致；小于 2048 的极端小块是参考实现的
+        // 已知 wrap 边界，不做不变性保证）
+        let mut split = SpectralLayer::new(147, ch, sr);
+        let mut pos = 0usize;
+        let mut frame = 0u64;
+        while pos < signal.len() {
+            let take = 8192usize.min(signal.len() - pos);
+            split.feed(&signal[pos..pos + take], frame);
+            pos += take;
+            frame += take as u64;
+        }
+        split.finish();
+        assert_eq!(one.bytes(), split.bytes(), "分块应等于一次喂");
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn centers_step_by_div() {
-        todo!()
+        let mut layer = SpectralLayer::new(147, 1, 44100);
+        let signal = vec![0i16; 3000];
+        layer.feed(&signal, 0);
+        layer.finish();
+        // center 序列满足 center+1024 <= 3000: 0,147,...,2058? 2058+1024=3082>3000 → 停
+        // 147*k + 1024 <= 3000 → k <= 13.44 → k=0..13 共 14 个
+        assert_eq!(layer.peak_count(), 14);
     }
 
     #[test]
-    #[ignore = "契约骨架：由实现方填充"]
     fn stereo_produces_per_channel_codes() {
-        todo!()
+        let mut layer = SpectralLayer::new(2048, 2, 44100);
+        let n = 4096usize;
+        let mut signal = vec![0i16; n * 2];
+        for i in 0..n {
+            signal[i * 2] =
+                (30000.0 * (2.0 * std::f64::consts::PI * 1000.0 * i as f64 / 44100.0).sin()) as i16;
+        }
+        layer.feed(&signal, 0);
+        layer.finish();
+        // center: 0, 2048 (2048+1024<=4096)；4096+1024>4096 停
+        assert_eq!(layer.peak_count(), 2); // 2 峰（每峰 2 声道 code）
+        assert_eq!(layer.bytes().len(), 2 * 2 * 4);
     }
 }

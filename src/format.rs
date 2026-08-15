@@ -130,7 +130,7 @@ mod tests {
         };
         let out = assemble(1, 8000, 0, 0, &[wave, spec, loud]);
         assert_eq!(out[5], 3); // mipmap_count
-        assert_eq!(&out[26..], &[1, 2, 3, 4, 5, 6]);
+        assert_eq!(&out[42..], &[1, 2, 3, 4, 5, 6]); // 18 头 + 3*8 mipmap 头 = 42
     }
 
     #[test]
