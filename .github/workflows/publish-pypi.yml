@@ -1,0 +1,139 @@
+# .github/workflows/publish-pypi.yml
+# Python 包发布 — 当推送 v* tag 时自动构建多平台 wheel 并发布到 PyPI
+# 使用 OIDC Trusted Publisher（无需 PYPI_TOKEN secret）
+# 需在 PyPI 项目设置中添加 Trusted Publisher:
+#   https://pypi.org/manage/project/reapeaks-rs/settings/publishing/
+#   GitHub org: drunkenQCat, repo: reapeaks-rs, workflow: publish-pypi.yml, env: pypi
+
+name: Publish PyPI
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  # Build wheels for each platform
+  build-wheels:
+    name: Build · ${{ matrix.os }} · Python ${{ matrix.python-version }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting version to $VERSION"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+          echo "pyproject.toml:" && grep version pyproject.toml
+          echo "Cargo.toml:" && grep version Cargo.toml
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build wheel
+        run: maturin build --release --out dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}-${{ matrix.python-version }}
+          path: dist/*.whl
+
+  # Build source distribution
+  build-sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          echo "Setting version to $VERSION"
+          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
+          sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+
+      - name: Install maturin
+        run: pip install maturin
+
+      - name: Build sdist
+        run: maturin sdist --out dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # Publish to PyPI via OIDC Trusted Publisher
+  publish:
+    name: Publish to PyPI
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write  # Required for OIDC
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List files
+        run: ls -lh dist/
+
+      # OIDC authentication — no token needed
+      # PyPI Trusted Publisher must be configured:
+      # https://pypi.org/manage/project/reapeaks-rs/settings/publishing/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+      - name: Build summary
+        run: |
+          echo "## 🐍 PyPI Publish Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Status**: ✅ Published successfully!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Package** | reapeaks-rust |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Version** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Platforms** | Windows, Linux, macOS |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Python** | 3.10–3.13 |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Auth** | OIDC Trusted Publisher |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
+          echo "pip install reapeaks-rust==${GITHUB_REF_NAME#v}" >> $GITHUB_STEP_SUMMARY
+          echo "```" >> $GITHUB_STEP_SUMMARY
