@@ -42,7 +42,12 @@ pub fn assemble(
     layers: &[LayerData],
 ) -> Vec<u8> {
     let mipmap_count: usize = layers.iter().map(|l| l.headers.len()).sum();
-    let mut out = Vec::with_capacity(18 + mipmap_count * 8);
+    let data_size: usize = layers
+        .iter()
+        .flat_map(|l| l.data.iter())
+        .map(|d| d.len())
+        .sum();
+    let mut out = Vec::with_capacity(18 + mipmap_count * 8 + data_size);
     out.extend_from_slice(MAGIC);
     out.push(channels);
     debug_assert!(mipmap_count <= u8::MAX as usize);

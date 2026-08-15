@@ -103,31 +103,57 @@ impl ReapeaksStreamer {
         if data.is_empty() {
             return Ok(());
         }
+        let block_start_frame = self.total_frames;
+        let frame_bytes = self.channels * 2;
+
+        // 快路径：无 carry 且数据为整帧 —— 优先零拷贝，否则拷贝进局部 scratch。
+        if self.carry.is_empty() && data.len() % frame_bytes == 0 {
+            if let Some(frames) = try_zero_copy_i16(data) {
+                let n_frames = (frames.len() / self.channels) as u64;
+                self.feed_layers(frames, block_start_frame);
+                self.total_frames += n_frames;
+                return Ok(());
+            }
+            let scratch: Vec<i16> = data
+                .chunks_exact(2)
+                .map(|c| i16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            let n_frames = (scratch.len() / self.channels) as u64;
+            self.feed_layers(&scratch, block_start_frame);
+            self.total_frames += n_frames;
+            return Ok(());
+        }
+
+        // 一般路径：有 carry 或尾部非整帧，splice 后喂入。
         let (frames, new_carry) = splice_frames(&self.carry, data, self.channels);
         self.carry = new_carry;
-        let block_start_frame = self.total_frames;
         let n_frames = (frames.len() / self.channels) as u64;
         if n_frames == 0 {
             return Ok(());
         }
+        self.feed_layers(&frames, block_start_frame);
+        self.total_frames += n_frames;
+        Ok(())
+    }
+
+    /// 把一份完整帧的 i16 块喂给所有启用的层（按层并行）。
+    fn feed_layers(&mut self, frames: &[i16], block_start_frame: u64) {
         use rayon::prelude::*;
         if self.options.is_enabled(Feature::Spectral) {
             self.spectral_layers
                 .par_iter_mut()
-                .for_each(|layer| layer.feed(&frames, block_start_frame));
+                .for_each(|layer| layer.feed(frames, block_start_frame));
         }
         if self.options.is_enabled(Feature::Wave) {
             self.wave_layers
                 .par_iter_mut()
-                .for_each(|layer| layer.feed(&frames));
+                .for_each(|layer| layer.feed(frames));
         }
         if self.options.is_enabled(Feature::Loudness) {
             self.loudness_layers
                 .par_iter_mut()
-                .for_each(|layer| layer.feed(&frames));
+                .for_each(|layer| layer.feed(frames));
         }
-        self.total_frames += n_frames;
-        Ok(())
     }
 
     /// 冲刷所有层并组装 RPKN 字节。`src_timestamp`/`src_filesize` 写入
@@ -251,6 +277,25 @@ impl std::fmt::Display for StreamerError {
 }
 
 impl std::error::Error for StreamerError {}
+
+/// 零拷贝把 s16le 字节切片重解释为 `&[i16]`（仅小端、且 2 字节对齐时可用）。
+#[cfg(target_endian = "little")]
+fn try_zero_copy_i16(data: &[u8]) -> Option<&[i16]> {
+    // SAFETY: `i16` 无非法的位模式；`align_to` 保证 middle 2 字节对齐且覆盖整数个
+    // i16；仅在小端目标上启用（s16le == 本机 i16），故重解释后数值语义与
+    // `i16::from_le_bytes` 完全一致。
+    let (prefix, middle, suffix) = unsafe { data.align_to::<i16>() };
+    if prefix.is_empty() && suffix.is_empty() {
+        Some(middle)
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_endian = "little"))]
+fn try_zero_copy_i16(_data: &[u8]) -> Option<&[i16]> {
+    None
+}
 
 /// 从 `carry + data` 中拼出完整的 i16 帧块，剩余字节写回 carry。
 /// 返回 `(完整块 i16, 新 carry)`。

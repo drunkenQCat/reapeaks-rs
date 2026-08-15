@@ -71,8 +71,9 @@ impl LoudnessLayer {
         }
         let full = rest_frames / div * div;
         if full > 0 {
+            let mut sqsum = vec![0i64; self.channels];
             for bucket in rest[..full * self.channels].chunks_exact(div * self.channels) {
-                let mut sqsum = vec![0i64; self.channels];
+                sqsum.fill(0);
                 for frame in bucket.chunks_exact(self.channels) {
                     for c in 0..self.channels {
                         let v = frame[c] as i64;
@@ -87,7 +88,7 @@ impl LoudnessLayer {
         }
         let tail = &rest[full * self.channels..];
         if !tail.is_empty() {
-            self.acc_sq = vec![0i64; self.channels];
+            self.acc_sq.fill(0);
             self.acc_count = (tail.len() / self.channels) as u32;
             for frame in tail.chunks_exact(self.channels) {
                 for c in 0..self.channels {
@@ -130,7 +131,7 @@ impl LoudnessLayer {
                 self.out.push(rms as f32);
             }
         }
-        self.acc_sq = vec![0i64; self.channels];
+        self.acc_sq.fill(0);
         self.acc_count = 0;
     }
 }

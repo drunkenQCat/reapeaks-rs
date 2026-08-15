@@ -81,9 +81,11 @@ impl WaveLayer {
         }
         let full = rest_frames / div * div; // 完整 bucket 的帧数
         if full > 0 {
+            let mut bmax: Vec<i16> = Vec::with_capacity(self.channels);
+            let mut bmin: Vec<i16> = Vec::with_capacity(self.channels);
             for bucket in rest[..full * self.channels].chunks_exact(div * self.channels) {
-                let mut bmax: Vec<i16> = Vec::with_capacity(self.channels);
-                let mut bmin: Vec<i16> = Vec::with_capacity(self.channels);
+                bmax.clear();
+                bmin.clear();
                 for (i, frame) in bucket.chunks_exact(self.channels).enumerate() {
                     if i == 0 {
                         bmax.extend_from_slice(frame);
@@ -109,8 +111,8 @@ impl WaveLayer {
         // 尾部不足一个 bucket 的帧进入 acc
         let tail = &rest[full * self.channels..];
         if !tail.is_empty() {
-            self.acc_max = vec![i16::MIN; self.channels];
-            self.acc_min = vec![i16::MAX; self.channels];
+            self.acc_max.fill(i16::MIN);
+            self.acc_min.fill(i16::MAX);
             self.acc_count = (tail.len() / self.channels) as u32;
             for frame in tail.chunks_exact(self.channels) {
                 for c in 0..self.channels {
@@ -155,8 +157,8 @@ impl WaveLayer {
             self.out.push(self.acc_max[c]);
             self.out.push(self.acc_min[c]);
         }
-        self.acc_max = vec![i16::MIN; self.channels];
-        self.acc_min = vec![i16::MAX; self.channels];
+        self.acc_max.fill(i16::MIN);
+        self.acc_min.fill(i16::MAX);
         self.acc_count = 0;
     }
 }
