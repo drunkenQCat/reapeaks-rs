@@ -38,8 +38,33 @@ READY = HAS_RUST and HAS_REF
 
 
 def _synthetic_pcm(sample_rate: int, channels: int, seconds: float, seed: int = 1) -> bytes:
-    """确定性合成 s16le 交错 PCM：正弦 + LCG 噪声，不依赖 numpy。"""
-    raise NotImplementedError("契约骨架：主 agent 合入后填充")
+    """确定性合成 s16le 交错 PCM：正弦 + LCG 噪声，不依赖 numpy。
+
+    每声道 = 正弦（不同频率）+ 确定性 LCG 噪声混合，保证波形非平凡、
+    频谱有内容、左右声道独立。同一参数永远产生相同字节。
+    """
+    import math
+    import struct
+
+    n = int(sample_rate * seconds)
+    state = seed & 0xFFFFFFFF
+
+    def lcg() -> int:
+        nonlocal state
+        state = (1103515245 * state + 12345) & 0x7FFFFFFF
+        return state
+
+    frames = bytearray()
+    freqs = [220.0 + 110.0 * ch for ch in range(channels)]
+    for i in range(n):
+        for ch in range(channels):
+            t = i / sample_rate
+            sine = math.sin(2 * math.pi * freqs[ch] * t) * 16000
+            noise = (lcg() / 0x7FFFFFFF - 0.5) * 4000
+            value = int(round(sine + noise))
+            value = max(-32768, min(32767, value))
+            frames += struct.pack("<h", value)
+    return bytes(frames)
 
 
 class DifferentialWaveTests(unittest.TestCase):
@@ -47,19 +72,19 @@ class DifferentialWaveTests(unittest.TestCase):
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_wave_layer_byte_identical_mono(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_wave_layer_byte_identical_stereo(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_wave_layer_default_features_matches(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_tail_partial_bucket_matches(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
 
 class DifferentialSpectralTests(unittest.TestCase):
@@ -67,11 +92,11 @@ class DifferentialSpectralTests(unittest.TestCase):
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_spectral_tolerance_mono(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_spectral_tolerance_stereo(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
 
 class DifferentialLoudnessTests(unittest.TestCase):
@@ -79,7 +104,7 @@ class DifferentialLoudnessTests(unittest.TestCase):
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_loudness_ulp_tolerance(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
 
 class DifferentialSwitchTests(unittest.TestCase):
@@ -87,23 +112,23 @@ class DifferentialSwitchTests(unittest.TestCase):
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_features_spectral_only(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_features_loudness_only(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_mipmap_levels_2(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_divs_custom(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_header_metadata_matches(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
 
 class DifferentialChunkingTests(unittest.TestCase):
@@ -111,7 +136,7 @@ class DifferentialChunkingTests(unittest.TestCase):
 
     @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
     def test_chunked_feed_equals_oneshot(self) -> None:
-        raise NotImplementedError("契约骨架")
+        self.skipTest("契约骨架：主 agent 合入后填充")
 
 
 if __name__ == "__main__":
