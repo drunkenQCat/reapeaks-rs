@@ -62,12 +62,12 @@ impl SpectralLayer {
         let total_after = block_start_frame + n_frames;
 
         let div = self.div as u64;
-        // 处理所有满足 center + HALF_FFT <= total_after 的中心
+        // 收集本块内所有需要计算的窗口（center 升序），随后并行做 FFT。
+        let mut windows: Vec<(u64, usize)> = Vec::new(); // (center, channel)
         while self.next_center + HALF_FFT <= total_after {
             let center = self.next_center;
             // 与参考一致：s0 = max(0, center - 1024)，文件开头的窗口不足 2048 长
             let s0 = center.saturating_sub(HALF_FFT);
-            let s1 = center + HALF_FFT;
             // s1 <= total_after 由 while 保证；s0 >= base 由 base=start(含 hist) 保证
             if s0 < base {
                 // 窗口起点超出可见历史（理论上不应发生：hist 始终保留最近 2048 帧，
@@ -76,23 +76,35 @@ impl SpectralLayer {
                 continue;
             }
             for c in 0..self.channels {
-                let mut win: Vec<i16> = Vec::with_capacity((s1 - s0) as usize);
-                for abs in s0..s1 {
-                    let sample = if abs < block_start_frame {
-                        let idx = (abs - base) as usize;
-                        self.hist.as_ref().expect("hist 必存在")
-                            [idx * self.channels + c]
-                    } else {
-                        let idx = (abs - block_start_frame) as usize;
-                        block[idx * self.channels + c]
-                    };
-                    win.push(sample);
-                }
-                let (freq, density) = freq_density(&win, self.sample_rate);
-                let code = ((density as i32) << 15) | freq as i32;
-                self.out.push(code);
+                windows.push((center, c));
             }
             self.next_center += div;
+        }
+        // 并行计算所有谱码（rayon 按峰切分，worker 复用 FFT scratch）
+        if !windows.is_empty() {
+            use rayon::prelude::*;
+            let codes: Vec<i32> = windows
+                .par_iter()
+                .map(|&(center, c)| {
+                    let s0 = center.saturating_sub(HALF_FFT);
+                    let s1 = center + HALF_FFT;
+                    let mut win: Vec<i16> = Vec::with_capacity((s1 - s0) as usize);
+                    for abs in s0..s1 {
+                        let sample = if abs < block_start_frame {
+                            let idx = (abs - base) as usize;
+                            self.hist.as_ref().expect("hist 必存在")
+                                [idx * self.channels + c]
+                        } else {
+                            let idx = (abs - block_start_frame) as usize;
+                            block[idx * self.channels + c]
+                        };
+                        win.push(sample);
+                    }
+                    let (freq, density) = freq_density(&win, self.sample_rate);
+                    ((density as i32) << 15) | freq as i32
+                })
+                .collect();
+            self.out.extend_from_slice(&codes);
         }
         // 更新 hist：保留可见流（hist+block）的尾部至多 2048 帧。
         // 比参考实现（仅取 block 尾部）更健壮：即使连续小块（<2048 帧），
@@ -205,10 +217,19 @@ pub fn freq_density(window: &[i16], sample_rate: u32) -> (u16, u16) {
 }
 
 /// 2048 点实数 FFT 的幅值谱（丢弃相位），realfft 实现。
+///
+/// FFT plan 用进程级 `OnceLock` 缓存：`RealFftPlanner::plan_fft_forward`
+/// 返回 `Arc<dyn RealToComplex>`（`process` 只取 `&self`，可跨 rayon worker 共享），
+/// 每个调用只分配独立的输入/输出 buffer。
 fn real_fft(input: &[f64]) -> Vec<f64> {
-    use realfft::RealFftPlanner;
-    let mut planner = RealFftPlanner::<f64>::new();
-    let r2c = planner.plan_fft_forward(FFT_LEN);
+    use realfft::{RealFftPlanner, RealToComplex};
+    use std::sync::{Arc, OnceLock};
+
+    static R2C: OnceLock<Arc<dyn RealToComplex<f64>>> = OnceLock::new();
+    let r2c = R2C.get_or_init(|| {
+        let mut planner = RealFftPlanner::<f64>::new();
+        planner.plan_fft_forward(FFT_LEN)
+    });
     let mut indata = input.to_vec();
     let mut spectrum = r2c.make_output_vec();
     r2c.process(&mut indata, &mut spectrum).expect("FFT 失败");
