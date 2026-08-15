@@ -154,10 +154,10 @@ class FixtureGenerationCompareTests(_FixtureBase):
         ch = struct.unpack_from("<H", raw, 22)[0]
         pcm = raw[44:]
         fixture = (TEST_DATA_DIR / f"{name}.wav.ReaPeaks").read_bytes()
-        # Rust 生成（全特性，REAPER 默认）
+        # Rust 生成（全特性，REAPER 默认 8 层：wave 3 + spectral 3 + loudness 2）
         out = reapeaks_rust.generate(
             pcm, sr, ch,
-            features=["wave", "spectral"],
+            features=["wave", "spectral", "loudness"],
             mipmap_levels=3,
             src_timestamp=int(wav.stat().st_mtime),
             src_filesize=len(raw),
