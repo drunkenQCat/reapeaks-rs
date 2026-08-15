@@ -382,10 +382,12 @@ class ReapeaksStreamer:
 
     def _assemble(self, src_timestamp: int, src_filesize: int) -> bytes:
         """按 RPKN v1.1 布局输出：头 + mipmap headers + 各层数据。"""
-        wave_headers = [
-            (div, len(self._w_out[li]) // (self.channels * 4))
-            for li, div in enumerate(self._layer_divs)
-        ]
+        wave_headers: list[tuple[int, int]] = []
+        if self._wave_on:
+            wave_headers = [
+                (div, len(self._w_out[li]) // (self.channels * 4))
+                for li, div in enumerate(self._layer_divs)
+            ]
         spec_headers: list[tuple[int, int]] = []
         if self._spectral_on:
             c_total = self._spectral_total()
