@@ -1,6 +1,6 @@
 """REAPER .ReaPeaks（RPKN v1.1）生成器 —— 带生成开关的参考实现。
 
-本模块是 reapeaks-rust（PyO3 内核）的**语义基准**：给定相同输入与相同
+本模块是 reapeaks（PyO3 内核）的**语义基准**：给定相同输入与相同
 开关，Rust 输出与本实现的契约为：
 
 - wave 层：逐字节一致（纯整数 min/max 运算）

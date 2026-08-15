@@ -24,7 +24,7 @@ TEST_DATA_DIR = Path(__file__).resolve().parent / "test_data"
 sys.path.insert(0, str(Path(__file__).resolve().parent / "python_ref"))
 
 try:
-    import reapeaks_rust  # noqa: F401
+    import reapeaks  # noqa: F401
 
     HAS_RUST = True
 except ImportError:
@@ -82,7 +82,7 @@ class _FixtureBase(unittest.TestCase):
 class FixtureSemanticTests(_FixtureBase):
     """语义验证（借用 MAW 的 FixtureReaPeaksTests 思路）。"""
 
-    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks_rust 或 gen_fixtures 未就绪")
+    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks 或 gen_fixtures 未就绪")
     @unittest.skipUnless(_fixture_present("tone30"), "REAPER fixture missing: tone30")
     def test_tone30_segment_amplitudes(self) -> None:
         # Rust 生成 tone30 的 ReaPeaks，解析最细 wave 层，按内容段验证振幅
@@ -93,7 +93,7 @@ class FixtureSemanticTests(_FixtureBase):
         ch = struct.unpack_from("<H", raw, 22)[0]
         data_off = 44  # 标准 PCM wav 头
         pcm = raw[data_off:]
-        out = reapeaks_rust.generate(pcm, sr, ch, features=["wave", "spectral"], mipmap_levels=3)
+        out = reapeaks.generate(pcm, sr, ch, features=["wave", "spectral"], mipmap_levels=3)
         _, hs, ds = _headers(out)
         wave0 = hs[0]
         div = wave0[0]
@@ -110,7 +110,7 @@ class FixtureSemanticTests(_FixtureBase):
         self.assertGreater(max(amps[int(10 * pps) : int(600 * pps)]), 40, "200Hz 段应有振幅")
         self.assertLessEqual(max(amps[int(1790 * pps) :]), 1, "1790-1800s 应≈静音")
 
-    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks_rust 或 gen_fixtures 未就绪")
+    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks 或 gen_fixtures 未就绪")
     @unittest.skipUnless(_fixture_present("tone_dual"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_stereo_channels(self) -> None:
         wav = TEST_DATA_DIR / "tone_dual.wav"
@@ -118,7 +118,7 @@ class FixtureSemanticTests(_FixtureBase):
         sr = struct.unpack_from("<I", raw, 24)[0]
         ch = struct.unpack_from("<H", raw, 22)[0]
         pcm = raw[44:]
-        out = reapeaks_rust.generate(pcm, sr, ch, features=["wave"], mipmap_levels=3)
+        out = reapeaks.generate(pcm, sr, ch, features=["wave"], mipmap_levels=3)
         _, hs, ds = _headers(out)
         wave0 = hs[0]
         peak_bytes = out[ds : ds + wave0[1] * ch * 4]
@@ -132,7 +132,7 @@ class FixtureSemanticTests(_FixtureBase):
         self.assertGreater(ch_amp[0], 40, "左声道应有振幅")
         self.assertGreater(ch_amp[1], 40, "右声道应有振幅")
 
-    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks_rust 或 gen_fixtures 未就绪")
+    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks 或 gen_fixtures 未就绪")
     @unittest.skipUnless(_fixture_present("tone_48k"), "REAPER fixture missing: tone_48k")
     def test_tone_48k_sample_rate(self) -> None:
         wav = TEST_DATA_DIR / "tone_48k.wav"
@@ -140,7 +140,7 @@ class FixtureSemanticTests(_FixtureBase):
         sr = struct.unpack_from("<I", raw, 24)[0]
         ch = struct.unpack_from("<H", raw, 22)[0]
         pcm = raw[44:]
-        out = reapeaks_rust.generate(pcm, sr, ch, features=["wave"], mipmap_levels=3)
+        out = reapeaks.generate(pcm, sr, ch, features=["wave"], mipmap_levels=3)
         self.assertEqual(struct.unpack_from("<i", out, 6)[0], 48000)
 
 
@@ -155,7 +155,7 @@ class FixtureGenerationCompareTests(_FixtureBase):
         pcm = raw[44:]
         fixture = (TEST_DATA_DIR / f"{name}.wav.ReaPeaks").read_bytes()
         # Rust 生成（全特性，REAPER 默认 8 层：wave 3 + spectral 3 + loudness 2）
-        out = reapeaks_rust.generate(
+        out = reapeaks.generate(
             pcm, sr, ch,
             features=["wave", "spectral", "loudness"],
             mipmap_levels=3,
@@ -178,17 +178,17 @@ class FixtureGenerationCompareTests(_FixtureBase):
         diff = abs(rust_len - fix_len) / max(rust_len, fix_len)
         self.assertLess(diff, 0.1, f"{name} 数据段长度差异 {diff:.2%}")
 
-    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks_rust 或 gen_fixtures 未就绪")
+    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks 或 gen_fixtures 未就绪")
     @unittest.skipUnless(_fixture_present("tone30"), "REAPER fixture missing: tone30")
     def test_tone30_generated_matches_fixture(self) -> None:
         self._compare_reapeaks("tone30")
 
-    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks_rust 或 gen_fixtures 未就绪")
+    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks 或 gen_fixtures 未就绪")
     @unittest.skipUnless(_fixture_present("tone_dual"), "REAPER fixture missing: tone_dual")
     def test_tone_dual_generated_matches_fixture(self) -> None:
         self._compare_reapeaks("tone_dual")
 
-    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks_rust 或 gen_fixtures 未就绪")
+    @unittest.skipUnless(HAS_RUST and HAS_GEN, "reapeaks 或 gen_fixtures 未就绪")
     @unittest.skipUnless(_fixture_present("tone_48k"), "REAPER fixture missing: tone_48k")
     def test_tone_48k_generated_matches_fixture(self) -> None:
         self._compare_reapeaks("tone_48k")
@@ -197,7 +197,7 @@ class FixtureGenerationCompareTests(_FixtureBase):
 class FixtureRoundTripTests(unittest.TestCase):
     """Rust 输出 → 参考解析器往返可解析。"""
 
-    @unittest.skipUnless(HAS_RUST, "reapeaks_rust 未就绪")
+    @unittest.skipUnless(HAS_RUST, "reapeaks 未就绪")
     def test_output_parses_fully_with_reference_parser(self) -> None:
         import reapeaks_generate as ref
 
@@ -211,7 +211,7 @@ class FixtureRoundTripTests(unittest.TestCase):
             for c in range(2):
                 v = int(round(math.sin(2 * math.pi * (220 + 110 * c) * i / sr) * 16000))
                 frames += struct.pack("<h", v)
-        out = reapeaks_rust.generate(bytes(frames), sr, ch, features=["wave", "spectral", "loudness"])
+        out = reapeaks.generate(bytes(frames), sr, ch, features=["wave", "spectral", "loudness"])
         # 参考解析：确认结构完整（header 可读、数据段非空）
         _, hs, ds = _headers(out)
         self.assertTrue(hs)

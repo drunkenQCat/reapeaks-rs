@@ -70,7 +70,7 @@
 | 层 | 工具 | 环境依赖 | 内容 |
 |---|---|---|---|
 | L1 | `cargo test` | 无 | 格式骨架、bucket 边界、chunk 切分不变性、声道、开关矩阵 |
-| L2 | `python -m unittest`（`test_reapeaks_rust_differential.py`） | numpy（可选）、Python 参考实现、已构建的 reapeaks_rust | 差分：wave 逐字节 / spectral ±1 / loudness 1ulp；开关组合 |
+| L2 | `python -m unittest`（`test_reapeaks_rust_differential.py`） | numpy（可选）、Python 参考实现、已构建的 reapeaks | 差分：wave 逐字节 / spectral ±1 / loudness 1ulp；开关组合 |
 | L3 | `python -m unittest`（`test_reapeaks_fixture.py`） | numpy、fixture 文件（缺失 auto-skip） | 语义断言 + 生成对比 + 往返可解析 |
 | 集成 | `python -m unittest`（`test_media_pipe.py`） | ffmpeg | 真实媒体经 ffmpeg pipe → Rust streamer → 生成 → MAW parser 解析 → 源签名匹配 |
 | 性能 | `bench/bench_compare.py`（独立脚本，不进 CI 断言） | numpy、ffmpeg、参考实现 | 小文件 sanity → 1h / 2h：墙钟、峰值内存、输出一致性抽查 |

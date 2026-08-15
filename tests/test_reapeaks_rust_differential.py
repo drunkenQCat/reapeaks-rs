@@ -1,6 +1,6 @@
 # pyright: reportAny=false
 
-"""L2 差分测试：Rust `reapeaks_rust` 生成器 vs Python 参考实现。
+"""L2 差分测试：Rust `reapeaks` 生成器 vs Python 参考实现。
 
 分层断言（golden-verification.md §2-L2）：
 - wave 层：逐字节相等
@@ -19,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "python_ref"))
 
 try:
-    import reapeaks_rust  # noqa: F401
+    import reapeaks  # noqa: F401
 
     HAS_RUST = True
 except ImportError:
@@ -73,7 +73,7 @@ def _headers(out: bytes) -> tuple[int, list[tuple[int, int]], int]:
 
 
 def _rust_generate(pcm, sr, ch, features, mipmap_levels=1, divs=None):
-    return reapeaks_rust.generate(
+    return reapeaks.generate(
         pcm, sr, ch,
         divs=divs,
         features=features,
@@ -106,7 +106,7 @@ def _split_layers(out: bytes, headers: list[tuple[int, int]], data_start: int, c
 class DifferentialWaveTests(unittest.TestCase):
     """wave 层逐字节差分。"""
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_wave_layer_byte_identical_mono(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -114,7 +114,7 @@ class DifferentialWaveTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("wave",))
         self.assertEqual(r, p, "wave-only mono 应逐字节相等")
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_wave_layer_byte_identical_stereo(self) -> None:
         sr, ch = 44100, 2
         pcm = _synthetic_pcm(sr, ch, 0.5)
@@ -122,7 +122,7 @@ class DifferentialWaveTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("wave",))
         self.assertEqual(r, p, "wave-only stereo 应逐字节相等")
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_tail_partial_bucket_matches(self) -> None:
         # 非整桶尾部：8001 帧，div=26 → 307 整桶 + 19 帧残桶
         sr, ch = 8000, 1
@@ -135,7 +135,7 @@ class DifferentialWaveTests(unittest.TestCase):
 class DifferentialSpectralTests(unittest.TestCase):
     """spectral 层 ±1 容差差分（实现已对齐，实际应逐字节相等）。"""
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_spectral_byte_identical_mono(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -143,7 +143,7 @@ class DifferentialSpectralTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("wave", "spectral"))
         self.assertEqual(r, p, "spectral 应逐字节相等（实现已对齐）")
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_spectral_tolerance_stereo(self) -> None:
         sr, ch = 8000, 2
         pcm = _synthetic_pcm(sr, ch, 0.5)
@@ -155,7 +155,7 @@ class DifferentialSpectralTests(unittest.TestCase):
 class DifferentialLoudnessTests(unittest.TestCase):
     """loudness 层差分（实现已对齐，应逐字节相等）。"""
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_loudness_byte_identical(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -167,7 +167,7 @@ class DifferentialLoudnessTests(unittest.TestCase):
 class DifferentialSwitchTests(unittest.TestCase):
     """features / mipmap_levels 开关组合一致性。"""
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_features_spectral_only(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -175,7 +175,7 @@ class DifferentialSwitchTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("spectral",))
         self.assertEqual(r, p)
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_features_loudness_only(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -183,7 +183,7 @@ class DifferentialSwitchTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("loudness",))
         self.assertEqual(r, p)
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_mipmap_levels_2(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -191,7 +191,7 @@ class DifferentialSwitchTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("wave", "spectral", "loudness"), mipmap_levels=2)
         self.assertEqual(r, p)
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_mipmap_levels_3(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -199,7 +199,7 @@ class DifferentialSwitchTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("wave", "spectral", "loudness"), mipmap_levels=3)
         self.assertEqual(r, p)
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_divs_custom(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 1.0)
@@ -208,11 +208,11 @@ class DifferentialSwitchTests(unittest.TestCase):
         p = _ref_generate(pcm, sr, ch, ("wave", "spectral"), mipmap_levels=2, divs=divs)
         self.assertEqual(r, p)
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_header_metadata_matches(self) -> None:
         sr, ch = 8000, 1
         pcm = _synthetic_pcm(sr, ch, 0.1)
-        r = reapeaks_rust.generate(pcm, sr, ch, features=["wave"], src_timestamp=12345, src_filesize=67890)
+        r = reapeaks.generate(pcm, sr, ch, features=["wave"], src_timestamp=12345, src_filesize=67890)
         p = _ref_generate(pcm, sr, ch, ("wave",))
         # 参考不暴露 ts/fs 参数，改为直接检查 Rust 侧元数据写回
         self.assertEqual(r[10:14], struct.pack("<i", 12345))
@@ -222,12 +222,12 @@ class DifferentialSwitchTests(unittest.TestCase):
 class DifferentialChunkingTests(unittest.TestCase):
     """分块不变性：Rust 侧任意分块 ≡ 一次喂完（与参考一致）。"""
 
-    @unittest.skipUnless(READY, "reapeaks_rust 或 python_ref 未就绪")
+    @unittest.skipUnless(READY, "reapeaks 或 python_ref 未就绪")
     def test_chunked_feed_equals_oneshot(self) -> None:
         sr, ch = 8000, 2
         pcm = _synthetic_pcm(sr, ch, 1.0)
-        oneshot = reapeaks_rust.generate(pcm, sr, ch, features=["wave", "spectral", "loudness"])
-        s = reapeaks_rust.ReapeaksStreamer(sr, ch, features=["wave", "spectral", "loudness"])
+        oneshot = reapeaks.generate(pcm, sr, ch, features=["wave", "spectral", "loudness"])
+        s = reapeaks.ReapeaksStreamer(sr, ch, features=["wave", "spectral", "loudness"])
         # 随机大小分块（含非整帧尾部，验证 carry）
         step = 7000
         for i in range(0, len(pcm), step):

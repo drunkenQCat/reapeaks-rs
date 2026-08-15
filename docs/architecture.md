@@ -55,13 +55,13 @@ ffmpeg 子进程管理（查找/缺失降级/stderr/进程生命周期/缓存复
 - **FFT 资源复用**：`realfft::RealFftPlanner` 预计算 2048 点 plan；每条 worker 线程一块 scratch + 预生成 Hanning 窗；杜绝每次 FFT 重复分配
 - GIL：feed/finish 全程 `py.allow_threads` 包裹；Python 侧循环仅在块边界拿 GIL
 
-## 5. Python API（`reapeaks_rust` 模块）
+## 5. Python API（`reapeaks` 模块）
 
 ```python
-import reapeaks_rust
+import reapeaks
 
 # 流式（无缝替换 _ReaPeaksStreamer）
-s = reapeaks_rust.ReapeaksStreamer(
+s = reapeaks.ReapeaksStreamer(
     sample_rate, channels,
     divs=None,                    # None → 默认 300/20/1 峰值每秒三层
     features=("wave",),           # ("wave",) | ("wave","spectral") 等任一子集，默认只 wave
@@ -71,7 +71,7 @@ s.feed(chunk_bytes)               # 零拷贝 view，重活在 allow_threads 内
 s.finish(src_timestamp=0, src_filesize=0) -> bytes
 
 # bulk 快速入口（全量并行）
-reapeaks_rust.generate(pcm_bytes, sample_rate, channels, **同上) -> bytes
+reapeaks.generate(pcm_bytes, sample_rate, channels, **同上) -> bytes
 ```
 
 - 输入输出都是 `bytes`（不引 numpy crate）；`features` 为字符串 tuple（与 Python 风格一致）

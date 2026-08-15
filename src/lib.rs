@@ -1,4 +1,4 @@
-//! reapeaks-rust：REAPER .ReaPeaks（RPKN v1.1）流式生成器。
+//! reapeaks：REAPER .ReaPeaks（RPKN v1.1）流式生成器。
 //!
 //! 纯 Rust 内核（无 pyo3 依赖），PyO3 绑定由 `py` feature 门控（见 `py.rs`）。
 //! 语义基准：`reapeaks-knowledge/reapeaks_generate.py`（Python 参考实现），

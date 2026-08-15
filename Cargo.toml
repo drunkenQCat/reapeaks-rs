@@ -6,7 +6,7 @@ description = "REAPER .ReaPeaks generator: streaming wave/spectral/loudness mipm
 license = "MIT OR Apache-2.0"
 
 [lib]
-name = "reapeaks_rust"
+name = "reapeaks"
 crate-type = ["cdylib", "rlib"]
 
 [features]

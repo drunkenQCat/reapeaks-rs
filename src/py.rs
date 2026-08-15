@@ -33,7 +33,7 @@ fn parse_features(features: Option<Vec<String>>) -> PyResult<Vec<Feature>> {
 }
 
 /// 流式生成器（对 Python 暴露）。
-#[pyclass(module = "reapeaks_rust")]
+#[pyclass(module = "reapeaks")]
 pub struct ReapeaksStreamer {
     inner: CoreStreamer,
 }
@@ -112,9 +112,9 @@ fn generate(
     Python::attach(|py| Ok(PyBytes::new(py, &bytes).unbind()))
 }
 
-/// `reapeaks_rust` 模块入口。
+/// `reapeaks` 模块入口。
 #[pymodule]
-fn reapeaks_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn reapeaks(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ReapeaksStreamer>()?;
     m.add_function(wrap_pyfunction!(generate, m)?)?;
     Ok(())

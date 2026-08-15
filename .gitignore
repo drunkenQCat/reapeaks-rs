@@ -1,6 +1,7 @@
 /target
 /.cargo-target
 /.venv
+/dist
 __pycache__/
 *.pyc
 *.wav

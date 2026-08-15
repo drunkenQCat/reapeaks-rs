@@ -15,4 +15,4 @@ test = ["numpy>=2.0"]
 
 [tool.maturin]
 features = ["py"]
-module-name = "reapeaks_rust"
+module-name = "reapeaks"
