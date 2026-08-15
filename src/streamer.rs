@@ -180,7 +180,12 @@ impl ReapeaksStreamer {
         let mut spec_headers: Vec<MipmapHeader> = Vec::new();
         if !self.spectral_layers.is_empty() {
             let fine_div = self.spectral_layers[0].div() as i64;
-            let fine_npeak = self.wave_layers.first().map_or(0, |w| w.peak_count()) as i64;
+            // fine_npeak：wave 启用时取最细 wave 层实际峰数；
+            // 未启用时用等效峰数 ceil(total/fine_div)（与参考 _finest_npeak 一致）
+            let fine_npeak = match self.wave_layers.first() {
+                Some(w) => w.peak_count() as i64,
+                None => ((self.total_frames + fine_div as u64 - 1) / fine_div as u64) as i64,
+            };
             let c_total = fine_div * fine_npeak - 1280;
             for layer in &mut self.spectral_layers {
                 layer.finish();
