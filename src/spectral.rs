@@ -139,26 +139,20 @@ pub fn freq_density(window: &[i16], sample_rate: u32) -> (u16, u16) {
     }
     let fftn = FFT_LEN;
     let segf: Vec<f64> = window.iter().map(|&v| v as f64 / 32768.0).collect();
-    // 与参考 _spec_buffer 一致：
-    // - n >= 2048：不加窗，直接截断到 2048
-    // - n < 2048：居中放置 + Hanning 加窗（窗长 = 窗口长度），其余零填充
-    let buf = if n >= fftn {
-        let mut b = vec![0.0f64; fftn];
-        b[..fftn].copy_from_slice(&segf[..fftn]);
-        b
-    } else {
-        let mut b = vec![0.0f64; fftn];
-        let start = (fftn - n) / 2;
-        for (i, &v) in segf.iter().enumerate() {
-            let w = if n > 1 {
-                0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (n - 1) as f64).cos()
-            } else {
-                1.0
-            };
-            b[start + i] = v * w;
-        }
-        b
-    };
+    // 与 MAW 原始参考 _spec_buf 一致：总是加窗（窗长 = 有效段长），居中放置。
+    // B 版（python-ref）曾改成 n>=2048 不加窗，与原始参考不一致，已要求其修复回加窗。
+    let mut buf = vec![0.0f64; fftn];
+    let start = (fftn - n) / 2;
+    let end = (start + n).min(fftn);
+    let seg_len = end - start;
+    for (i, &v) in segf.iter().take(seg_len).enumerate() {
+        let w = if seg_len > 1 {
+            0.5 - 0.5 * (2.0 * std::f64::consts::PI * i as f64 / (seg_len - 1) as f64).cos()
+        } else {
+            1.0
+        };
+        buf[start + i] = v * w;
+    }
     // 2048 点实数 FFT → 幅值谱（丢弃 DC）
     let mut spectrum = real_fft(&buf);
     let ac: Vec<f64> = spectrum.drain(1..).collect();
