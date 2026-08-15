@@ -42,12 +42,15 @@ jobs:
       - name: Set version from tag
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Setting version to $VERSION"
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
-          sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
-          echo "pyproject.toml:" && grep version pyproject.toml
-          echo "Cargo.toml:" && grep version Cargo.toml
+          python - <<'PY'
+          import os, re, pathlib
+          version = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          print(f"Setting version to {version}")
+          for f in ("pyproject.toml", "Cargo.toml"):
+              p = pathlib.Path(f)
+              p.write_text(re.sub(r'^(version\s*=\s*)"[^"]*"', f'\g<1>"{version}"', p.read_text(), flags=re.M))
+              print(f, "->", [l for l in p.read_text().splitlines() if l.startswith("version")][0])
+          PY
 
       - name: Install maturin
         run: pip install maturin
@@ -77,10 +80,15 @@ jobs:
       - name: Set version from tag
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          echo "Setting version to $VERSION"
-          sed -i "s/^version = .*/version = \"$VERSION\"/" pyproject.toml
-          sed -i "s/^version = .*/version = \"$VERSION\"/" Cargo.toml
+          python - <<'PY'
+          import os, re, pathlib
+          version = os.environ["GITHUB_REF_NAME"].lstrip("v")
+          print(f"Setting version to {version}")
+          for f in ("pyproject.toml", "Cargo.toml"):
+              p = pathlib.Path(f)
+              p.write_text(re.sub(r'^(version\s*=\s*)"[^"]*"', f'\g<1>"{version}"', p.read_text(), flags=re.M))
+              print(f, "->", [l for l in p.read_text().splitlines() if l.startswith("version")][0])
+          PY
 
       - name: Install maturin
         run: pip install maturin
