@@ -32,7 +32,7 @@ import numpy as np
 MAGIC = b"RPKN"  # v1.1
 FFT_SIZE = 2048          # 频谱窗口长度
 HALF_FFT = FFT_SIZE // 2
-SPEC_TRIM_TAIL = FFT_SIZE - HALF_FFT  # 1280：频谱 trim 的尾差
+SPEC_TRIM_TAIL = 1280  # 对齐原始参考（reapeaks-knowledge）：fine_div*fine_npeak - 1280
 
 # 特性规范顺序（与 Rust Feature::ALL 同构：wave → spectral → loudness）
 FEATURE_ORDER = ("wave", "spectral", "loudness")
@@ -73,11 +73,12 @@ def _spec_buffer(seg: np.ndarray, fftn: int = FFT_SIZE) -> np.ndarray:
     buf = np.zeros(fftn, dtype=np.float64)
     seg_f = np.asarray(seg, dtype=np.float64) / 32768.0
     n = len(seg_f)
-    if n >= fftn:
-        return seg_f[:fftn]
+    # 与 MAW 原始参考 _spec_buf 一致：总是对有效段加 Hanning 窗（即使段长 == fftn），
+    # 居中放置、其余零填充。
+    n = min(n, fftn)
     start = (fftn - n) // 2
     win = np.hanning(n)
-    buf[start:start + n] = seg_f * win
+    buf[start:start + n] = seg_f[:n] * win
     return buf
 
 
