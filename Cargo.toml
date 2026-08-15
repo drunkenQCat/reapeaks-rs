@@ -1,6 +1,6 @@
 [package]
 name = "reapeaks"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "REAPER .ReaPeaks generator: streaming wave/spectral/loudness mipmaps, PyO3 bindings"
 license = "MIT OR Apache-2.0"
