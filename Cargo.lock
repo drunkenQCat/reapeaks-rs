@@ -204,7 +204,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reapeaks-rust"
+name = "reapeaks"
 version = "0.1.0"
 dependencies = [
  "pyo3",
