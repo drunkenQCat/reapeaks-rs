@@ -381,6 +381,35 @@ mod tests {
     }
 
     #[test]
+    fn misaligned_input_falls_back_to_copy_and_matches() {
+        // 覆盖未对齐回退：奇数偏移使 &[u8] 对 i16 未对齐，`try_zero_copy_i16`
+        // 返回 None，应走逐元素拷贝回退，且输出与对齐快路径逐字节一致。
+        let sr = 44100u32;
+        let data = pcm_sine(sr, 2, 30000, 440.0);
+        let mut padded = Vec::with_capacity(data.len() + 1);
+        padded.push(0u8);
+        padded.extend_from_slice(&data);
+        let misaligned = &padded[1..];
+        assert_eq!(misaligned.len(), data.len());
+        // 2ch → frame_bytes = 4，垫 1 字节后长度不变，仍帧对齐
+        assert!(misaligned.len() % 4 == 0);
+        // 小端 + 奇数偏移 ⇒ align_to 前缀非空 ⇒ 必走回退拷贝路径
+        #[cfg(target_endian = "little")]
+        assert!(try_zero_copy_i16(misaligned).is_none());
+
+        let features = [Feature::Wave, Feature::Spectral, Feature::Loudness];
+        let mut aligned = make_streamer(sr, 2, &features, 3);
+        aligned.feed(&data).unwrap();
+        let expected = aligned.finish(0, 0);
+
+        let mut mis = make_streamer(sr, 2, &features, 3);
+        mis.feed(misaligned).unwrap();
+        let got = mis.finish(0, 0);
+
+        assert_eq!(got, expected, "未对齐回退与对齐快路径应逐字节一致");
+    }
+
+    #[test]
     fn header_metadata_written_into_finish() {
         let sr = 8000u32;
         let data = pcm_sine(sr, 1, 8000, 440.0);
