@@ -1,0 +1,7 @@
+/target
+/.cargo-target
+/.venv
+__pycache__/
+*.pyc
+*.wav
+*.ReaPeaks.maw

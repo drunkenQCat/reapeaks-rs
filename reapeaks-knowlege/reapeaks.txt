@@ -1,0 +1,127 @@
+REAPEAKS file format v1.1/1.2 (last updated 10/23/2020)
+------------------------------------------------------------------------------
+Copyright (C) 2006-2020, Cockos Incorporated
+
+A ReaPeaks file stores peak information for a media file.
+
+Typically a ReaPeaks file is named with the media file's name plus a .ReaPeaks
+extension, but it doesn't have to be (REAPER itself supports putting them in
+a temporary directory with a hashed name).
+
+The file format is a binary format, with all multi-byte integers stored in
+Little Endian (Intel) format.
+
+ReaPeaks file:
+  4 bytes: "RPKM" (v1.0) or "RPKN" (v1.1) magic header
+           v1.2, REAPER 5.15+: "RPKL" for large-range peaks (used for FP media)
+  1 byte integer: number of channels of source file (usually 1 or 2)
+  1 byte integer: number of mipmaps. As of REAPER 6.x, the maximum mipmaps supported is 16.
+  4 byte integer: samplerate of source file
+  4 byte integer: low 32 bits of last modified time of source file (i.e. from stat() .st_mtime)
+                  REAPER will allow for small variations (a few seconds), as well as within a
+                  few seconds of one hour off (to allow for DST changes etc)
+  4 byte integer: low 32 bits of file size of source (i.e. from stat() .st_size).
+
+                  Note that the last two members are purely for making sure
+                  that an updated file is detected -- you can completely ignore
+                  them on read if rebuilding peaks is not an option.
+  <mipmap header 1>
+  <mipmap header 2>
+  <mipmap header ..>
+  <mipmap header n>
+  <mipmap data 1>
+  <mipmap data 2>
+  <mipmap data ..>
+  <mipmap data n>
+
+mipmap header format:
+  4 byte integer: division factor (can be approx 4..1,000,000)
+                  This value represents the number of samples represented by
+                  each peak value. For example, if the source samplerate is
+                  44100, and each mipmap peak value represents 1 second, the
+                  division factor is 44100. If the source samplerate is 44100,
+                  and each mipmap peak value represents 100ms, then this value
+                  is 4410, etc.
+
+                  NOTE: the first mipmap should be the highest
+                  resolution, and subsequent mipmaps should be decreasing in
+                  resolution (increasing in division factor)
+
+                  NOTE: in REAPER v5.x+ if spectral peaks, spectrogram, or loudness
+                  are enabled, the last X mipmaps may have this value negative as a
+                  token for spectral/loudness modes:
+
+                  -(int)'s' : spectral peaks
+                      There will be an equal number of mipmaps as the main sample mipmaps,
+                      and the mipmap division rate mirrors the main sample mipmap division rates.
+
+                  -(int)'g' : spectrogram
+                  -(int)'r' : loudness peaks
+                  -(int)'l' : loudness peaks (deprecated format)
+                      There will be one less mipmap of this type than of the main sample mipmaps,
+                      the mipmap division rate mirrors the main sample mipmap division rates
+                      starting at mipmap 2 (e.g. the first spectrogram entry will be equivalent
+                      rate to the second main sample mipmap).
+
+
+
+  4 byte integer: number of peak samples in this mipmap ("n")
+
+mipmap data:
+
+  The mipmap data for all mipmaps is stored sequentially, using the size of the
+mipmaps from the previous mipmap header fields to determine the mipmap positions.
+
+    If v1.1: <n * number of channels * 2> 2 byte integers: the peak data
+       The peak data is a collection of 2 byte signed sample pairs (-32768 to
+       32767), maximum and minimum values for this interval.
+        Example: stereo samples (MX=max, MN=min, ???? = 2 bytes):
+          L0MX L0MN R0MX R0MN L1MX L1MN R1MX R1MN ...
+        Example: mono samples (MX=max, MN=min):
+          L0MX L0MN L1MX L1MN L2MX L2MN ...
+      If the header was "RPKL", then these short integers are transformed:
+        -24576..0 = -1.0 to 0.0
+        0..24576 = 0.0 to 1.0
+        24576..32767 = 1.0 to 8.0: 2^((in-24576)/1024)
+        -32768..-24576: -8.0 to -1.0: - (2^((-in-24576)/1024))
+  -or-
+    If v1.0: <n * number of channels> 2 byte integers: the peak data
+       The peak data is a collection of 2 byte signed samples (-32768 to 32767).
+       Note: REAPER (as of 1.0rc1) will calculate whether the peak is positive or
+       negative, but only uses the absolute value of the peak when displaying.
+       This effectively halves the dynamic range of the v1.0 peaks format.
+        Example: stereo samples (???? = 2 bytes):
+          LFT0 RGT0 LFT1 RGT1 LFT2 RGT2 ...
+        Example: mono samples:
+          LFT0 LFT1 LFT2 ...
+
+If a spectral peak mipmap (implies v1.1 or v1.2):
+  One 32-bit int per channel per sample spectral info:
+    low 15 bits frequency, next 14 bits density (16383=tonal, 0=noise, 12288 = a bit noisy).
+  Total size is the same as a regular main mipmap.
+
+If a spectrogram mipmap (implies v1.1 or v1.2):
+  192 bytes per channel, 128 12-bit bins with each pair of bin values encoded as 3 bytes:
+    MSB1, (LSN1<<4)|LSN2, MSB2.
+
+If a loudness mipmap ('r' format only, implies v1.1 or v1.2):
+  Two 32-bit floats per channel per sample loudness info:
+    low 32 bits for LUFS-M, high 32 bits for LUFS-S.
+    Values are a windowed, weighted mean square of samples for each channel,
+    which must be combined to calculate total loudness. Specifically,
+    values are z(i) in formula 2 in this document:
+    https://www.itu.int/dms_pubrec/itu-r/rec/bs/R-REC-BS.1770-0-200607-S!!PDF-E.pdf
+  Total size is the same as a regular main mipmap.
+
+
+Currently (v7.x), REAPER generates:
+  1. At approximately 400 peaks/sec (divfactor 110 at 44khz), depending on a
+      preferences configuration.
+  2. At approximately 10 peaks/sec (divfactor 4410 at 44khz)
+  3. At approximately 1 peaks/sec (divfactor 44100 at 44khz)
+  4. If spectral peaks enabled, 3 spectral peaks mipmaps are generated (-'s' and the same rates as above)
+  5. If spectrogram is enabled, 2 spectrogram mimaps are generated (at rates 1/2)
+
+
+
+<eof>
