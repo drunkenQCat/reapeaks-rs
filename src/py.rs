@@ -11,6 +11,7 @@
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
+use pyo3_stub_gen::{define_stub_info_gatherer, derive::*};
 
 use crate::options::{Feature, OptionsError, StreamerOptions};
 use crate::streamer::ReapeaksStreamer as CoreStreamer;
@@ -32,11 +33,13 @@ fn parse_features(features: Option<Vec<String>>) -> PyResult<Vec<Feature>> {
 }
 
 /// 流式生成器（对 Python 暴露）。
-#[pyclass(module = "reapeaks")]
+#[gen_stub_pyclass]
+#[pyclass(module = "reapeaks._native")]
 pub struct ReapeaksStreamer {
     inner: CoreStreamer,
 }
 
+#[gen_stub_pymethods]
 #[pymethods]
 impl ReapeaksStreamer {
     /// 构造。
@@ -67,7 +70,11 @@ impl ReapeaksStreamer {
 
     /// 消费一个 s16le 交错字节块（可任意切分）。
     /// 重活发生在释放 GIL 的线程中。
-    fn feed(&mut self, py: Python<'_>, data: &[u8]) -> PyResult<()> {
+    fn feed(
+        &mut self,
+        py: Python<'_>,
+        #[gen_stub(override_type(type_repr = "bytes"))] data: &[u8],
+    ) -> PyResult<()> {
         let inner = &mut self.inner;
         let result = py.detach(move || inner.feed(data));
         result.map_err(|e| PyValueError::new_err(e.to_string()))
@@ -90,12 +97,13 @@ impl ReapeaksStreamer {
 /// bulk 快速入口：一次性传入全部 s16le 交错 PCM，返回完整 RPKN 字节。
 ///
 /// 参数语义同 `ReapeaksStreamer`；入口内部整段并行处理。
+#[gen_stub_pyfunction]
 #[pyfunction]
 #[pyo3(signature = (pcm, sample_rate, channels, divs=None, features=None, mipmap_levels=1, src_timestamp=0, src_filesize=0))]
 #[allow(clippy::too_many_arguments)]
 fn generate(
     py: Python<'_>,
-    pcm: &[u8],
+    #[gen_stub(override_type(type_repr = "bytes"))] pcm: &[u8],
     sample_rate: u32,
     channels: u32,
     divs: Option<Vec<u32>>,
@@ -117,10 +125,13 @@ fn generate(
     Python::attach(|py| Ok(PyBytes::new(py, &bytes).unbind()))
 }
 
-/// `reapeaks` 模块入口。
+/// `reapeaks._native` 模块入口（`__init__.py` 再导出为公共 API）。
 #[pymodule]
+#[pyo3(name = "_native")]
 fn reapeaks(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<ReapeaksStreamer>()?;
     m.add_function(wrap_pyfunction!(generate, m)?)?;
     Ok(())
 }
+
+define_stub_info_gatherer!(stub_info);

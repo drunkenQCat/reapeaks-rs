@@ -19,7 +19,7 @@ REAPER 在首次导入媒体时生成 `.ReaPeaks` 峰值文件，用于波形 / 
 - **自定义分层**：`divs` 自定义 division factors；默认约 300 / 20 / 1 峰值每秒。
 - **分块不变性**：任意分块 `feed` 与一次喂完，输出逐字节一致。
 - **精度契约**：wave 层与 Python 参考实现逐字节一致；spectral ±1 容差；loudness 1 ulp 容差。
-- **abi3 wheel**：单份 wheel 覆盖多个 Python 版本（requires-python ≥ 3.9）。
+- **abi3 wheel**：单份 wheel 覆盖多个 Python 版本（requires-python ≥ 3.10）。
 
 ## 安装
 
@@ -27,10 +27,11 @@ REAPER 在首次导入媒体时生成 `.ReaPeaks` 峰值文件，用于波形 / 
 pip install reapeaks
 ```
 
-从源码构建（需要 Rust ≥ 1.83 与 maturin）：
+从源码构建（需要 Rust ≥ 1.83 与 maturin；先由 stub_gen 生成类型桩，再打 wheel）：
 
 ```bash
 pip install maturin
+cargo run --bin stub_gen --features py   # 生成 python/reapeaks/_native.pyi（构建产物）
 maturin build --release --out dist
 pip install dist/*.whl
 ```
@@ -38,6 +39,7 @@ pip install dist/*.whl
 开发安装（构建并安装到当前虚拟环境）：
 
 ```bash
+cargo run --bin stub_gen --features py   # 生成类型桩
 maturin develop
 ```
 
@@ -98,6 +100,7 @@ cargo test                                              # Rust 内核单元测�
 cargo clippy --all-targets -- -D warnings
 cargo fmt --check
 
+cargo run --bin stub_gen --features py  # 生成类型桩（构建产物，不入 Git）
 maturin develop                                         # 构建并安装到虚拟环境
 python -m unittest discover -s tests -p "test_*.py"     # L2/L3 差分与 fixture 测试
 ```
@@ -113,6 +116,8 @@ src/
   wave.rs / spectral.rs / loudness.rs # 三种 mipmap 累加器
   format.rs                           # RPKN 字节组装
   py.rs                               # PyO3 绑定薄层（py feature）
+  bin/stub_gen.rs                     # 类型桩生成器（cargo run --bin stub_gen --features py）
+python/reapeaks/                      # Python 面：__init__.py 再导出 + py.typed
 tests/
   test_reapeaks_rust_differential.py  # L2 差分（vs tests/python_ref）
   test_reapeaks_fixture.py            # L3 REAPER fixture 语义验证

@@ -14,6 +14,9 @@ pub mod wave;
 #[cfg(feature = "py")]
 pub mod py;
 
+#[cfg(feature = "py")]
+pub use py::stub_info;
+
 pub use format::{assemble, LayerData, MipmapHeader};
 pub use options::{Feature, OptionsError, StreamerOptions};
 pub use streamer::ReapeaksStreamer;

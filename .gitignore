@@ -6,3 +6,7 @@ __pycache__/
 *.pyc
 *.wav
 *.ReaPeaks.maw
+
+# 生成的类型桩（cargo run --bin stub_gen --features py 产物，不入 Git）
+python/reapeaks/_native.pyi
+python/reapeaks/_native/

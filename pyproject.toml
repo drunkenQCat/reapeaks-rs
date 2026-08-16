@@ -4,9 +4,9 @@ build-backend = "maturin"
 
 [project]
 name = "reapeaks"
-version = "0.3.0"
+version = "0.3.1"
 description = "REAPER .ReaPeaks generator: streaming wave/spectral/loudness mipmaps (Rust core)"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 license = { text = "MIT OR Apache-2.0" }
 dependencies = []
 
@@ -15,4 +15,8 @@ test = ["numpy>=2.0"]
 
 [tool.maturin]
 features = ["py"]
-module-name = "reapeaks"
+module-name = "reapeaks._native"
+python-source = "python"
+# 桩是 gitignore 的构建产物，maturin 的 python-source 过滤会跳过它；
+# 用 include 显式把它打进 wheel 与 sdist。
+include = ["python/reapeaks/_native.pyi"]

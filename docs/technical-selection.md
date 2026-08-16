@@ -53,7 +53,7 @@
 
 **pyo3 0.29 + rayon 1.12 + realfft 3.5**，进程内只跑流式内核：
 
-1. **pyo3 0.29**：当前最新稳定版（crates.io 权威查询），支持 Python 3.13（本机 3.13.5）；`abi3-py38` 特性让一个 wheel 覆盖所有 Python 版本；`py.allow_threads` 成熟可靠。
+1. **pyo3 0.29**：crates.io 上支持 Python 3.13 的稳定版；`abi3-py310` 特性让一个 wheel 覆盖 Python ≥ 3.10（3.8/3.9 已 EOL），并可配合 `pyo3-stub-gen` 0.23 自动生成 `.pyi` 类型桩；`py.allow_threads` 成熟可靠。
 2. **rayon**：wave/loudness 是纯归约（min/max、平方和），spectral 每峰值独立 FFT——三种层都是天然宿主并行度最高的形态。streaming 下**块内并行**（每块数百~数千峰值），内存保持有界；bulk 入口可跨段并行。
 3. **realfft**：频谱层是最大开销（每小时 108 万次 2048 点 FFT）。`RealFftPlanner` 一次性预计算 plan，每个 worker 线程复用一块 scratch buffer + 预生成 Hanning 窗——把"每次 FFT 重新分配"和 Python 循环全部消掉。2048 点 R2C 单次约 µs 级，多核下 1 小时文件的频谱层进秒级。
 4. **精度设计**：wave 层全整数 i16 min/max（零精度损失）；loudness 用 i64 平方和累加（1.59e8×2³⁰ ≈ 1.7e17 < i64 max，不会溢出）再转 f64；spectral 公式照搬参考实现（argmax + 抛物线插值 + 平坦度→density）。

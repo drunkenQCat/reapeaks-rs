@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        # abi3 wheel 跨 Python 版本通用（cp38-abi3 覆盖 3.8+），
+        # abi3 wheel 跨 Python 版本通用（cp310-abi3 覆盖 3.10+），
         # 只用一个 Python 版本构建，避免同名 wheel 在 artifact 合并时覆盖损坏。
         python-version: ["3.12"]
 
@@ -40,6 +40,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate type stubs
+        run: cargo run --bin stub_gen --features py
 
       - name: Set version from tag
         shell: bash
@@ -79,6 +82,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Generate type stubs
+        run: cargo run --bin stub_gen --features py
 
       - name: Set version from tag
         shell: bash
@@ -146,7 +155,7 @@ jobs:
           echo "| **Package** | reapeaks |" >> $GITHUB_STEP_SUMMARY
           echo "| **Version** | ${{ github.ref_name }} |" >> $GITHUB_STEP_SUMMARY
           echo "| **Platforms** | Windows, Linux, macOS |" >> $GITHUB_STEP_SUMMARY
-          echo "| **Python** | 3.8+（abi3） |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Python** | 3.10+（abi3） |" >> $GITHUB_STEP_SUMMARY
           echo "| **Auth** | OIDC Trusted Publisher |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "```" >> $GITHUB_STEP_SUMMARY
