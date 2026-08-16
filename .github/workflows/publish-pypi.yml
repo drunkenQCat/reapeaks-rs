@@ -54,8 +54,8 @@ jobs:
           print(f"Setting version to {version}")
           for f in ("pyproject.toml", "Cargo.toml"):
               p = pathlib.Path(f)
-              p.write_text(re.sub(r'^(version\s*=\s*)"[^"]*"', f'\g<1>"{version}"', p.read_text(), flags=re.M))
-              print(f, "->", [l for l in p.read_text().splitlines() if l.startswith("version")][0])
+              p.write_text(re.sub(r'^(version\s*=\s*)"[^"]*"', f'\g<1>"{version}"', p.read_text(encoding="utf-8"), flags=re.M), encoding="utf-8")
+              print(f, "->", [l for l in p.read_text(encoding="utf-8").splitlines() if l.startswith("version")][0])
           PY
 
       - name: Install maturin
@@ -99,8 +99,8 @@ jobs:
           print(f"Setting version to {version}")
           for f in ("pyproject.toml", "Cargo.toml"):
               p = pathlib.Path(f)
-              p.write_text(re.sub(r'^(version\s*=\s*)"[^"]*"', f'\g<1>"{version}"', p.read_text(), flags=re.M))
-              print(f, "->", [l for l in p.read_text().splitlines() if l.startswith("version")][0])
+              p.write_text(re.sub(r'^(version\s*=\s*)"[^"]*"', f'\g<1>"{version}"', p.read_text(encoding="utf-8"), flags=re.M), encoding="utf-8")
+              print(f, "->", [l for l in p.read_text(encoding="utf-8").splitlines() if l.startswith("version")][0])
           PY
 
       - name: Install maturin
