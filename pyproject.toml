@@ -14,7 +14,9 @@ dependencies = []
 test = ["numpy>=2.0"]
 
 [tool.maturin]
-features = ["py"]
+# extension-module 只在 maturin 打 wheel 时启用（pyo3 会跳过链接 libpython）；
+# stub_gen 这个独立二进制需要链接 libpython，所以 Cargo.toml 里不带该 feature。
+features = ["py", "pyo3/extension-module"]
 module-name = "reapeaks._native"
 python-source = "python"
 # 桩是 gitignore 的构建产物，maturin 的 python-source 过滤会跳过它；
